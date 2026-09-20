@@ -221,6 +221,7 @@ export async function submitAttendanceRecord(record: Omit<AttendanceRecord, 'id'
   let isCloudSuccess = false;
 
   // 1. Simpan ke Supabase jika aktif
+  let supabaseErrorDetail = '';
   if (client) {
     try {
       const payload = {
@@ -243,13 +244,19 @@ export async function submitAttendanceRecord(record: Omit<AttendanceRecord, 'id'
         .select()
         .single();
 
-      if (!error && data) {
+      if (error) {
+        console.error('Supabase insert error:', error);
+        supabaseErrorDetail = error.message;
+      } else if (data) {
         cloudRecord = data;
         isCloudSuccess = true;
       }
     } catch (err: any) {
-      console.warn('Supabase insert exception:', err);
+      console.error('Supabase insert exception:', err);
+      supabaseErrorDetail = err?.message || 'Gagal terhubung ke Supabase';
     }
+  } else {
+    supabaseErrorDetail = 'Kunci Supabase belum terpasang di perangkat ini';
   }
 
   // 2. Kirim ke Server Terpusat MAN 1 Boyolali agar otomatis tersinkron ke semua HP / Laptop Guru
@@ -267,7 +274,7 @@ export async function submitAttendanceRecord(record: Omit<AttendanceRecord, 'id'
       }
     }
   } catch (err) {
-    console.warn('Gagal kirim ke server backend presensi:', err);
+    // Abaikan jika server lokal tidak aktif
   }
 
   const finalRecord: AttendanceRecord = cloudRecord || {
@@ -284,7 +291,9 @@ export async function submitAttendanceRecord(record: Omit<AttendanceRecord, 'id'
     success: true,
     record: finalRecord,
     isCloud: isCloudSuccess,
-    message: 'Presensi berhasil dicatat dan masuk ke database terpusat guru.',
+    message: isCloudSuccess
+      ? 'Presensi & foto berhasil masuk ke database pusat guru!'
+      : `Presensi tersimpan di HP. (Catatan Cloud: ${supabaseErrorDetail || 'Belum tersambung ke Supabase'})`,
   };
 }
 

@@ -132,7 +132,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (dateRangeEnd && recDate > dateRangeEnd) return false;
       if (selectedClass && rec.class !== selectedClass) return false;
       if (selectedPrayer && rec.prayer_type !== selectedPrayer) return false;
-      if (selectedStatus && rec.status !== selectedStatus) return false;
+      if (selectedStatus) {
+        const isLuar = rec.status === 'Di Luar Radius' || (rec.gps_status && rec.gps_status.toLowerCase().includes('luar'));
+        if (selectedStatus === 'Di Luar Radius') {
+          if (!isLuar) return false;
+        } else if (selectedStatus === 'Hadir') {
+          if (rec.status !== 'Hadir' || isLuar) return false;
+        } else if (rec.status !== selectedStatus) {
+          return false;
+        }
+      }
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         const matchName = rec.name.toLowerCase().includes(q);
@@ -147,11 +156,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Statistics
   const stats = useMemo(() => {
     const total = filteredRecords.length;
-    const hadir = filteredRecords.filter((r) => r.status === 'Hadir').length;
+    const hadir = filteredRecords.filter(
+      (r) => r.status === 'Hadir' && !r.gps_status?.toLowerCase().includes('luar')
+    ).length;
     const haid = filteredRecords.filter((r) => r.status === "Halangan Syar'i").length;
     const sakit = filteredRecords.filter((r) => r.status === 'Sakit' || r.status === 'Izin').length;
+    const luarRadius = filteredRecords.filter(
+      (r) => r.status === 'Di Luar Radius' || r.gps_status?.toLowerCase().includes('luar')
+    ).length;
     const rate = total > 0 ? Math.round((hadir / total) * 100) : 0;
-    return { total, hadir, haid, sakit, rate };
+    return { total, hadir, haid, sakit, luarRadius, rate };
   }, [filteredRecords]);
 
   // Pagination for 1,000+ students scale
@@ -251,15 +265,37 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </p>
         </div>
 
-        {/* Buttons: Export Excel, Print PDF, Refresh */}
+        {/* Buttons: Export Excel, Print PDF, Refresh, Supabase Cloud */}
         <div className="no-print flex items-center flex-wrap gap-2">
+          {/* Tombol Status & Setup Supabase Cloud */}
+          <motion.button
+            type="button"
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={handleOpenSupabaseModal}
+            className={`px-3.5 py-2 rounded-2xl text-xs font-bold transition shadow-xs cursor-pointer flex items-center gap-2 border ${
+              isCloudConnected
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
+                : 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
+            }`}
+            title="Pengaturan Database Supabase Cloud"
+          >
+            <Database className={`w-3.5 h-3.5 ${isCloudConnected ? 'text-emerald-600' : 'text-amber-600'}`} />
+            <span>{isCloudConnected ? 'Supabase Terhubung' : 'Koneksi Supabase'}</span>
+            <span
+              className={`w-2 h-2 rounded-full ${
+                isCloudConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
+              }`}
+            />
+          </motion.button>
+
           <motion.button
             type="button"
             whileHover={{ scale: 1.05, rotate: 180 }}
             whileTap={{ scale: 0.95 }}
             onClick={onRefreshData}
             className="p-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-600 rounded-2xl text-xs transition cursor-pointer shadow-xs"
-            title="Muat ulang data"
+            title="Muat ulang data presensi"
           >
             <RefreshCw className="w-4 h-4 text-emerald-600" />
           </motion.button>
@@ -288,6 +324,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       {/* REKAPITULASI & AUDIT TRAIL */}
       <div className="space-y-5">
+        {/* Banner Peringatan jika Supabase belum terhubung */}
+        {!isCloudConnected && (
+          <div className="no-print bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-amber-900 shadow-xs">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-amber-100 rounded-xl text-amber-700 shrink-0 mt-0.5">
+                <Database className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="font-bold text-xs sm:text-sm text-amber-950">
+                  Data Presensi Masih Berjalan di Mode Lokal (Per Perangkat)
+                </h4>
+                <p className="text-amber-800 text-xs mt-0.5 leading-relaxed">
+                  Foto dan data yang dikirim dari HP siswa <b>belum tersambung ke laptop ini</b> karena Supabase Cloud belum dihubungkan. Klik tombol di samping untuk memasukkan URL & Anon Key Supabase.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleOpenSupabaseModal}
+              className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs shrink-0 transition cursor-pointer shadow-xs"
+            >
+              Hubungkan Supabase Sekarang
+            </button>
+          </div>
+        )}
         {/* Printable Header (Only visible during print) */}
         <div className="hidden print-only text-center mb-6 text-black">
           <h1 className="text-xl font-bold uppercase">{MADRASAH_INFO.name}</h1>
@@ -302,65 +363,65 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
 
         {/* Statistics Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           <motion.div
-            className="bg-white border border-slate-200 p-4 rounded-3xl shadow-xs"
+            className="bg-white border border-slate-200 p-3.5 rounded-3xl shadow-xs"
             whileHover={{ y: -3, scale: 1.02 }}
             transition={{ type: 'spring', stiffness: 350, damping: 20 }}
           >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500">Total Absensi</span>
-            </div>
+            <span className="text-xs font-bold text-slate-500 block">Total Absensi</span>
             <div className="text-2xl font-black text-slate-900 mt-1">{stats.total}</div>
-            <span className="text-[11px] text-slate-400">Data tersimpan</span>
+            <span className="text-[11px] text-slate-400">Semua rekaman</span>
           </motion.div>
 
           <motion.div
-            className="bg-white border border-emerald-200/80 p-4 rounded-3xl shadow-xs"
+            className="bg-white border border-emerald-200/80 p-3.5 rounded-3xl shadow-xs"
             whileHover={{ y: -3, scale: 1.02 }}
             transition={{ type: 'spring', stiffness: 350, damping: 20 }}
           >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-emerald-700">Hadir Sholat</span>
-            </div>
+            <span className="text-xs font-bold text-emerald-700 block">Hadir Sah</span>
             <div className="text-2xl font-black text-emerald-600 mt-1">{stats.hadir}</div>
-            <span className="text-[11px] text-emerald-600">Valid AI & GPS</span>
+            <span className="text-[11px] text-emerald-600">Dalam radius Mushola</span>
           </motion.div>
 
           <motion.div
-            className="bg-white border border-rose-200/80 p-4 rounded-3xl shadow-xs"
+            className="bg-white border border-rose-200/80 p-3.5 rounded-3xl shadow-xs"
             whileHover={{ y: -3, scale: 1.02 }}
             transition={{ type: 'spring', stiffness: 350, damping: 20 }}
           >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-rose-700">Halangan Syar'i</span>
-            </div>
-            <div className="text-2xl font-black text-rose-600 mt-1">{stats.haid}</div>
-            <span className="text-[11px] text-rose-600">Dispensasi Siswi</span>
+            <span className="text-xs font-bold text-rose-700 block">Luar Radius</span>
+            <div className="text-2xl font-black text-rose-600 mt-1">{stats.luarRadius}</div>
+            <span className="text-[11px] text-rose-500 font-semibold">Tidak Sah / Verif</span>
           </motion.div>
 
           <motion.div
-            className="bg-white border border-amber-200/80 p-4 rounded-3xl shadow-xs"
+            className="bg-white border border-purple-200/80 p-3.5 rounded-3xl shadow-xs"
             whileHover={{ y: -3, scale: 1.02 }}
             transition={{ type: 'spring', stiffness: 350, damping: 20 }}
           >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-amber-700">Sakit / Izin</span>
-            </div>
+            <span className="text-xs font-bold text-purple-700 block">Halangan Syar'i</span>
+            <div className="text-2xl font-black text-purple-600 mt-1">{stats.haid}</div>
+            <span className="text-[11px] text-purple-600">Dispensasi Siswi</span>
+          </motion.div>
+
+          <motion.div
+            className="bg-white border border-amber-200/80 p-3.5 rounded-3xl shadow-xs"
+            whileHover={{ y: -3, scale: 1.02 }}
+            transition={{ type: 'spring', stiffness: 350, damping: 20 }}
+          >
+            <span className="text-xs font-bold text-amber-700 block">Sakit / Izin</span>
             <div className="text-2xl font-black text-amber-600 mt-1">{stats.sakit}</div>
             <span className="text-[11px] text-amber-600">Keterangan Khusus</span>
           </motion.div>
 
           <motion.div
-            className="bg-white border border-sky-200/80 p-4 rounded-3xl shadow-xs col-span-2 lg:col-span-1"
+            className="bg-white border border-sky-200/80 p-3.5 rounded-3xl shadow-xs col-span-2 sm:col-span-1"
             whileHover={{ y: -3, scale: 1.02 }}
             transition={{ type: 'spring', stiffness: 350, damping: 20 }}
           >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-sky-700">Tingkat Hadir</span>
-            </div>
+            <span className="text-xs font-bold text-sky-700 block">Tingkat Hadir</span>
             <div className="text-2xl font-black text-sky-600 mt-1">{stats.rate}%</div>
-            <span className="text-[11px] text-sky-600">Disiplin Sholat</span>
+            <span className="text-[11px] text-sky-600">Hadir Sah Sah</span>
           </motion.div>
         </div>
 
@@ -475,7 +536,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer"
               >
                 <option value="">Semua Status</option>
-                <option value="Hadir">Hadir</option>
+                <option value="Hadir">Hadir Sah (Dalam Radius)</option>
+                <option value="Di Luar Radius">Di Luar Radius (Tidak Sah)</option>
                 <option value="Halangan Syar'i">Halangan Syar'i</option>
                 <option value="Sakit">Sakit</option>
                 <option value="Izin">Izin</option>
@@ -510,9 +572,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               const dateStr = d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
               const timeStr = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
 
+              const isOutside =
+                rec.status === 'Di Luar Radius' ||
+                (rec.gps_status && rec.gps_status.toLowerCase().includes('luar'));
+
               let badgeColor = 'bg-emerald-50 text-emerald-800 border-emerald-200';
-              if (rec.status === "Halangan Syar'i") {
-                badgeColor = 'bg-rose-50 text-rose-800 border-rose-200';
+              let badgeLabel = rec.status;
+              if (isOutside) {
+                badgeColor = 'bg-rose-50 text-rose-700 border-rose-300 font-bold';
+                badgeLabel = 'Di Luar Radius';
+              } else if (rec.status === "Halangan Syar'i") {
+                badgeColor = 'bg-purple-50 text-purple-800 border-purple-200';
               } else if (rec.status === 'Sakit' || rec.status === 'Izin') {
                 badgeColor = 'bg-amber-50 text-amber-800 border-amber-200';
               }
@@ -520,18 +590,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               return (
                 <div
                   key={rec.id}
-                  className="bg-white border border-slate-200 rounded-2xl p-3.5 shadow-xs flex flex-col gap-3 transition hover:border-slate-300"
+                  className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs flex flex-col gap-3 transition hover:border-slate-300"
                 >
-                  {/* Header Kartu: Siswa, Waktu & Sholat */}
+                  {/* Header Kartu: Nama Siswa & Badge Status */}
                   <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <h4 className="font-bold text-slate-900 text-sm leading-tight">{rec.name}</h4>
+                    <div className="min-w-0 flex-1">
+                      <h4 className="font-bold text-slate-900 text-sm leading-snug truncate">{rec.name}</h4>
                       <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-500">
-                        <span className="font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md">
+                        <span className="font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
                           {rec.class}
                         </span>
-                        <span className="flex items-center gap-1 font-mono">
-                          <Clock className="w-3 h-3 text-slate-400" />
+                        <span className="flex items-center gap-1 font-mono text-slate-500">
+                          <Clock className="w-3 h-3 text-slate-400 shrink-0" />
                           {dateStr}, {timeStr}
                         </span>
                       </div>
@@ -542,73 +612,81 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         {rec.prayer_type}
                       </span>
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${badgeColor}`}>
-                        {rec.status}
+                        {badgeLabel}
                       </span>
                     </div>
                   </div>
 
-                  {/* Body Kartu: Bukti Foto, GPS, Catatan */}
-                  <div className="grid grid-cols-2 gap-2 bg-slate-50/70 rounded-xl p-2.5 border border-slate-100 text-[11px]">
-                    {/* Bukti Foto */}
-                    <div className="flex items-center gap-2">
+                  {/* Verifikasi Foto AI & Lokasi GPS - Layout Terpisah & Lega */}
+                  <div className="bg-slate-50 rounded-xl p-3 border border-slate-200/80 space-y-2.5 text-xs">
+                    {/* Baris Foto & AI */}
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
+                        <Camera className="w-3.5 h-3.5 text-slate-400" />
+                        Bukti AI:
+                      </span>
                       {rec.snapshot_photo ? (
                         <button
                           type="button"
                           onClick={() => setViewPhotoRecord(rec)}
-                          className="flex items-center gap-1.5 text-left group cursor-pointer"
+                          className="flex items-center gap-2 text-left group cursor-pointer bg-white px-2 py-1 rounded-lg border border-slate-200 shadow-2xs hover:border-emerald-300"
                         >
                           <img
                             src={rec.snapshot_photo}
                             alt="Bukti"
-                            className="w-10 h-10 rounded-lg object-cover border border-slate-200 bg-white group-hover:ring-2 group-hover:ring-emerald-500 transition shadow-2xs shrink-0"
+                            className="w-7 h-7 rounded object-cover border border-slate-200 shrink-0"
                           />
-                          <div className="overflow-hidden">
-                            <span className="text-[10px] text-emerald-700 font-bold block group-hover:underline flex items-center gap-1">
-                              <Eye className="w-3 h-3" /> Foto
+                          <div className="text-right">
+                            <span className="text-[10px] text-emerald-700 font-bold block group-hover:underline">
+                              Lihat Foto
                             </span>
-                            <span className="text-[9px] text-slate-400 block truncate">{rec.ai_status || 'OK'}</span>
+                            <span className="text-[9px] text-slate-500 font-mono block">
+                              {rec.ai_status?.includes('Dual Camera') ? 'Dual Camera' : rec.ai_status || 'Valid'}
+                            </span>
                           </div>
                         </button>
                       ) : (
-                        <div className="flex items-center gap-1.5 text-slate-400 italic text-[10px]">
-                          <Camera className="w-3.5 h-3.5 text-slate-300" />
-                          <span>{rec.ai_status || 'Tanpa Foto'}</span>
-                        </div>
+                        <span className="text-slate-400 text-[11px] italic">
+                          {rec.ai_status || 'Tanpa Foto'}
+                        </span>
                       )}
                     </div>
 
-                    {/* Lokasi GPS */}
-                    <div className="flex items-start gap-1.5">
-                      <MapPin
-                        className={`w-3.5 h-3.5 shrink-0 mt-0.5 ${
-                          rec.gps_status.includes('Valid') ? 'text-emerald-600' : 'text-rose-500'
-                        }`}
-                      />
-                      <div className="overflow-hidden">
+                    {/* Baris Lokasi GPS */}
+                    <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-200/60">
+                      <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
+                        <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                        Geofencing GPS:
+                      </span>
+                      <div className="flex items-center gap-1.5">
                         <span
-                          className={`font-bold block truncate text-[10px] ${
-                            rec.gps_status.includes('Valid') ? 'text-emerald-700' : 'text-rose-600'
+                          className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
+                            rec.gps_status.includes('Valid')
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : 'bg-rose-50 text-rose-700 border-rose-200'
                           }`}
                         >
-                          {rec.gps_status}
+                          {rec.gps_status.includes('Valid') ? 'Dalam Radius' : 'Luar Radius'}
                         </span>
-                        <span className="text-[9px] text-slate-400 block font-mono">
-                          {rec.gps_distance ? `${rec.gps_distance}m` : '-'}
-                        </span>
+                        {rec.gps_distance !== undefined && (
+                          <span className="text-[10px] text-slate-500 font-mono bg-white px-1.5 py-0.5 rounded border border-slate-200">
+                            {rec.gps_distance}m
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
 
                   {/* Keterangan Tambahan jika ada */}
                   {rec.notes && (
-                    <div className="text-[11px] text-slate-600 bg-amber-50/50 border border-amber-200/50 rounded-lg px-2.5 py-1.5 flex items-start gap-1.5">
+                    <div className="text-[11px] text-slate-600 bg-amber-50/60 border border-amber-200/70 rounded-xl px-3 py-2 flex items-start gap-1.5">
                       <FileText className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
-                      <span className="break-words line-clamp-2">{rec.notes}</span>
+                      <span className="break-words leading-relaxed">{rec.notes}</span>
                     </div>
                   )}
 
                   {/* Footer Kartu: Tombol Aksi Guru */}
-                  <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-100">
+                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
                     <button
                       type="button"
                       onClick={() => {
@@ -619,7 +697,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
                     >
                       <Edit2 className="w-3.5 h-3.5" />
-                      <span>Ubah</span>
+                      <span>Ubah Status</span>
                     </button>
                     <button
                       type="button"
@@ -639,17 +717,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         {/* Desktop View: Tabel Rekapitulasi Rapi & Lega (Layar md ke atas) */}
         <div className="hidden md:block bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-xs">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
+            <table className="w-full text-left text-xs border-collapse min-w-[1020px]">
               <thead className="bg-slate-50 text-slate-700 uppercase tracking-wider border-b border-slate-200 text-[11px]">
                 <tr>
-                  <th className="py-3.5 px-4 font-bold whitespace-nowrap">Waktu</th>
-                  <th className="py-3.5 px-4 font-bold whitespace-nowrap">Siswa & Kelas</th>
-                  <th className="py-3.5 px-4 font-bold whitespace-nowrap">Sholat</th>
-                  <th className="py-3.5 px-4 font-bold whitespace-nowrap">Status</th>
-                  <th className="py-3.5 px-4 font-bold whitespace-nowrap">Bukti Foto / AI</th>
-                  <th className="py-3.5 px-4 font-bold whitespace-nowrap">Lokasi GPS</th>
-                  <th className="py-3.5 px-4 font-bold">Keterangan</th>
-                  <th className="py-3.5 px-4 font-bold no-print text-right whitespace-nowrap">Aksi</th>
+                  <th className="py-4 px-4 font-bold whitespace-nowrap w-36">Waktu Presensi</th>
+                  <th className="py-4 px-4 font-bold whitespace-nowrap w-56">Siswa & Kelas</th>
+                  <th className="py-4 px-4 font-bold whitespace-nowrap w-28">Sholat</th>
+                  <th className="py-4 px-4 font-bold whitespace-nowrap w-36">Status</th>
+                  <th className="py-4 px-4 font-bold whitespace-nowrap w-48">Bukti Foto / AI</th>
+                  <th className="py-4 px-4 font-bold whitespace-nowrap w-44">Lokasi GPS</th>
+                  <th className="py-4 px-4 font-bold min-w-[160px]">Keterangan</th>
+                  <th className="py-4 px-4 font-bold no-print text-right whitespace-nowrap w-24">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -662,95 +740,121 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 ) : (
                   paginatedRecords.map((rec) => {
                     const d = new Date(rec.created_at);
-                    const timeStr =
-                      d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' }) +
-                      ' ' +
-                      d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+                    const dateStr = d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+                    const timeStr = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+
+                    const isOutside =
+                      rec.status === 'Di Luar Radius' ||
+                      (rec.gps_status && rec.gps_status.toLowerCase().includes('luar'));
 
                     let badgeColor = 'bg-emerald-50 text-emerald-700 border-emerald-200';
-                    if (rec.status === "Halangan Syar'i") {
-                      badgeColor = 'bg-rose-50 text-rose-700 border-rose-200';
+                    let badgeLabel = rec.status;
+                    if (isOutside) {
+                      badgeColor = 'bg-rose-50 text-rose-700 border-rose-300 font-bold';
+                      badgeLabel = 'Di Luar Radius';
+                    } else if (rec.status === "Halangan Syar'i") {
+                      badgeColor = 'bg-purple-50 text-purple-700 border-purple-200';
                     } else if (rec.status === 'Sakit' || rec.status === 'Izin') {
                       badgeColor = 'bg-amber-50 text-amber-700 border-amber-200';
                     }
 
                     return (
                       <tr key={rec.id} className="hover:bg-slate-50/80 transition">
-                        {/* Waktu */}
-                        <td className="py-3.5 px-4 whitespace-nowrap text-slate-500 font-mono text-[11px]">
-                          {timeStr}
+                        {/* Waktu Presensi */}
+                        <td className="py-4 px-4 whitespace-nowrap text-slate-500 font-mono text-xs">
+                          <div className="font-semibold text-slate-700">{timeStr} WIB</div>
+                          <div className="text-[11px] text-slate-400">{dateStr}</div>
                         </td>
 
                         {/* Nama & Kelas */}
-                        <td className="py-3.5 px-4">
-                          <div className="font-bold text-slate-900 text-xs sm:text-sm">{rec.name}</div>
-                          <div className="text-[11px] text-slate-500 font-medium">{rec.class}</div>
+                        <td className="py-4 px-4">
+                          <div className="font-bold text-slate-900 text-xs sm:text-sm leading-snug">{rec.name}</div>
+                          <span className="inline-block mt-0.5 text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                            Kelas {rec.class}
+                          </span>
                         </td>
 
                         {/* Sholat */}
-                        <td className="py-3.5 px-4 whitespace-nowrap">
-                          <span className="font-bold text-emerald-700">{rec.prayer_type}</span>
+                        <td className="py-4 px-4 whitespace-nowrap">
+                          <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                            {rec.prayer_type}
+                          </span>
                         </td>
 
                         {/* Status */}
-                        <td className="py-3.5 px-4 whitespace-nowrap">
+                        <td className="py-4 px-4 whitespace-nowrap">
                           <span
-                            className={`px-2.5 py-1 rounded-full text-[11px] font-bold border ${badgeColor}`}
+                            className={`px-3 py-1 rounded-full text-[11px] font-bold border ${badgeColor}`}
                           >
-                            {rec.status}
+                            {badgeLabel}
                           </span>
                         </td>
 
                         {/* Foto / AI */}
-                        <td className="py-3.5 px-4 whitespace-nowrap">
+                        <td className="py-4 px-4 whitespace-nowrap">
                           {rec.snapshot_photo ? (
                             <button
                               type="button"
                               onClick={() => setViewPhotoRecord(rec)}
-                              className="group flex items-center gap-2.5 text-left hover:opacity-80 cursor-pointer"
+                              className="group flex items-center gap-2.5 text-left hover:opacity-90 cursor-pointer bg-white p-1.5 rounded-xl border border-slate-200 shadow-2xs hover:border-emerald-300 transition"
                             >
                               <img
                                 src={rec.snapshot_photo}
                                 alt="Bukti"
-                                className="w-10 h-10 rounded-xl object-cover border border-slate-200 bg-slate-100 group-hover:ring-2 group-hover:ring-emerald-500 transition shadow-2xs"
+                                className="w-10 h-10 rounded-lg object-cover border border-slate-200 bg-slate-100 group-hover:ring-2 group-hover:ring-emerald-500 transition shadow-2xs shrink-0"
                               />
-                              <div>
+                              <div className="min-w-0">
                                 <div className="text-[11px] text-emerald-700 font-bold flex items-center gap-1 group-hover:underline">
                                   <Eye className="w-3 h-3" /> Lihat Foto
                                 </div>
-                                <div className="text-[10px] text-slate-500">{rec.ai_status}</div>
+                                <div className="text-[10px] text-slate-500 font-mono truncate max-w-[110px]">
+                                  {rec.ai_confidence ? `AI: ${rec.ai_confidence}%` : rec.ai_status || 'Valid'}
+                                </div>
                               </div>
                             </button>
                           ) : (
-                            <span className="text-slate-400 text-[11px] italic">
+                            <span className="text-slate-400 text-[11px] italic bg-slate-100 px-2 py-1 rounded-md">
                               {rec.ai_status || 'Tanpa Foto'}
                             </span>
                           )}
                         </td>
 
                         {/* Lokasi GPS */}
-                        <td className="py-3.5 px-4 whitespace-nowrap">
-                          <div
-                            className={`text-[11px] font-bold ${
-                              rec.gps_status.includes('Valid')
-                                ? 'text-emerald-700'
-                                : 'text-rose-600'
-                            }`}
-                          >
-                            {rec.gps_status}
+                        <td className="py-4 px-4 whitespace-nowrap">
+                          <div className="flex items-center gap-1.5">
+                            <MapPin
+                              className={`w-3.5 h-3.5 shrink-0 ${
+                                rec.gps_status.includes('Valid') ? 'text-emerald-600' : 'text-rose-500'
+                              }`}
+                            />
+                            <span
+                              className={`text-[11px] font-bold ${
+                                rec.gps_status.includes('Valid')
+                                  ? 'text-emerald-700'
+                                  : 'text-rose-600'
+                              }`}
+                            >
+                              {rec.gps_status.includes('Valid') ? 'Dalam Radius' : 'Luar Radius'}
+                            </span>
                           </div>
-                          <div className="text-[10px] text-slate-400 font-mono">
-                            {rec.gps_distance ? `${rec.gps_distance} meter` : '-'}
+                          <div className="text-[10px] text-slate-400 font-mono mt-0.5 ml-5">
+                            {rec.gps_distance !== undefined ? `${rec.gps_distance} meter` : '-'}
                           </div>
                         </td>
 
                         {/* Keterangan */}
-                        <td className="py-3.5 px-4 text-slate-600 text-[11px] max-w-xs truncate font-medium">
-                          {rec.notes || '-'}
+                        <td className="py-4 px-4 text-slate-600 text-xs">
+                          {rec.notes ? (
+                            <span className="bg-amber-50/70 border border-amber-200/80 text-amber-900 px-2 py-1 rounded-lg inline-block max-w-xs break-words text-[11px]">
+                              {rec.notes}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 text-[11px]">-</span>
+                          )}
                         </td>
 
                         {/* Aksi Guru */}
-                        <td className="py-3.5 px-4 no-print text-right whitespace-nowrap">
+                        <td className="py-4 px-4 no-print text-right whitespace-nowrap">
                           <div className="flex items-center justify-end gap-1.5">
                             <motion.button
                               type="button"
@@ -761,8 +865,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 setNewStatus(rec.status);
                                 setEditNotes(rec.notes || '');
                               }}
-                              className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer shadow-2xs"
-                              title="Ubah Status Manual"
+                              className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer shadow-2xs"
+                              title="Ubah Status Presensi"
                             >
                               <Edit2 className="w-3.5 h-3.5" />
                             </motion.button>
@@ -771,8 +875,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               whileHover={{ scale: 1.1 }}
                               whileTap={{ scale: 0.9 }}
                               onClick={() => promptDeleteRecord(rec.id, rec.name)}
-                              className="p-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-600 transition cursor-pointer shadow-2xs"
-                              title="Hapus Catatan"
+                              className="p-2 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-600 transition cursor-pointer shadow-2xs"
+                              title="Hapus Catatan Presensi"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </motion.button>
@@ -948,6 +1052,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer"
                 >
                   <option value="Hadir">Hadir</option>
+                  <option value="Di Luar Radius">Di Luar Radius</option>
                   <option value="Halangan Syar'i">Halangan Syar'i</option>
                   <option value="Sakit">Sakit</option>
                   <option value="Izin">Izin</option>

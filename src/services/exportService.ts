@@ -3,6 +3,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { AttendanceRecord } from '../types';
 import { MADRASAH_INFO } from '../data/madrasahData';
+import { evaluateAttendanceRecord } from './prayerTimeService';
 
 export function exportToExcel(records: AttendanceRecord[], filterSummary?: string): void {
   const dataRows = records.map((rec, idx) => {
@@ -18,6 +19,11 @@ export function exportToExcel(records: AttendanceRecord[], filterSummary?: strin
       second: '2-digit',
     });
 
+    // Evaluasi 3 Aturan Mutlak: Dalam Jam Sholat, Dalam Radius, Ada Bukti Foto
+    const evaluation = evaluateAttendanceRecord(rec);
+    const displayStatus = evaluation.displayStatus;
+    const displayNotes = evaluation.notesText;
+
     return {
       No: idx + 1,
       Tanggal: dateFormatted,
@@ -25,11 +31,11 @@ export function exportToExcel(records: AttendanceRecord[], filterSummary?: strin
       'Nama Siswa': rec.name,
       Kelas: rec.class,
       'Jenis Sholat': rec.prayer_type,
-      'Status Kehadiran': rec.status,
+      'Status Kehadiran': displayStatus,
       'Deteksi AI': rec.ai_status + (rec.ai_confidence ? ` (${rec.ai_confidence}%)` : ''),
       'Status Lokasi GPS': rec.gps_status,
       'Jarak ke Lokasi (m)': rec.gps_distance ? `${rec.gps_distance} m` : '-',
-      Keterangan: rec.notes || '-',
+      Keterangan: displayNotes,
       'ID Sistem': rec.id,
     };
   });
@@ -91,16 +97,22 @@ export function exportToPdf(records: AttendanceRecord[], filterSummary?: string)
     const d = new Date(rec.created_at);
     const dateStr = d.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' });
     const timeStr = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+
+    // Evaluasi 3 Aturan Mutlak: Dalam Jam Sholat, Dalam Radius, Ada Bukti Foto
+    const evaluation = evaluateAttendanceRecord(rec);
+    const displayStatus = evaluation.displayStatus;
+    const displayNotes = evaluation.notesText;
+
     return [
       idx + 1,
       `${dateStr} ${timeStr}`,
       rec.name,
       rec.class,
       rec.prayer_type,
-      rec.status,
+      displayStatus,
       rec.ai_status + (rec.ai_confidence ? ` (${rec.ai_confidence}%)` : ''),
       rec.gps_status + (rec.gps_distance ? ` (${rec.gps_distance}m)` : ''),
-      rec.notes || '-',
+      displayNotes,
     ];
   });
 

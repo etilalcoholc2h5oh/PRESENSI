@@ -1,5 +1,5 @@
 export type PrayerType = 'Dhuha' | 'Dzuhur' | 'Sholat Jumat';
-export type AttendanceStatus = 'Hadir' | "Halangan Syar'i" | 'Sakit' | 'Izin';
+export type AttendanceStatus = 'Hadir' | "Halangan Syar'i" | 'Sakit' | 'Izin' | 'Di Luar Radius' | 'Tidak Sah';
 
 export interface Student {
   id: string;

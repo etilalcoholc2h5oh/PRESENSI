@@ -371,18 +371,24 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
     if (!currentStudent) return;
     setSubmitting(true);
     try {
+      const isOutsideRadius = !gpsInside;
+      const attendanceStatus: AttendanceStatus = isOutsideRadius ? 'Di Luar Radius' : 'Hadir';
+      const autoNotes = isOutsideRadius
+        ? `Presensi di luar radius mushola/lapangan (${gpsDistance} meter). Perlu verifikasi guru.`
+        : `Hadir sholat ${prayerType} berjamaah di Mushola & Lapangan Madrasah`;
+
       const res = await submitAttendanceRecord({
         name: currentStudent.name,
         class: currentStudent.class,
         prayer_type: prayerType,
-        status: 'Hadir',
+        status: attendanceStatus,
         ai_status: `Valid (${latestDetection.score}%)`,
         ai_confidence: latestDetection.score,
-        gps_status: gpsInside ? 'Valid (Dalam Radius)' : 'Di Luar Radius',
+        gps_status: gpsInside ? 'Valid (Dalam Radius)' : `Di Luar Radius (${gpsDistance}m)`,
         gps_distance: gpsDistance,
         gps_coords: gpsCoords,
         snapshot_photo: finalPhoto,
-        notes: `Hadir sholat ${prayerType} berjamaah di Mushola & Lapangan Madrasah`,
+        notes: autoNotes,
         created_at: new Date().toISOString(),
       });
 
