@@ -67,42 +67,159 @@ function loadScript(src: string): Promise<void> {
  * Melakukan deteksi objek pada video element
  */
 export async function detectObjects(videoEl: HTMLVideoElement): Promise<DetectionResult> {
-  if (!loadedModel || videoEl.readyState < 2) {
+  // Cek kesiapan video
+  if (!videoEl || videoEl.readyState < 2 || videoEl.videoWidth === 0 || videoEl.videoHeight === 0) {
     return { hasPerson: false, score: 0, allPredictions: [] };
   }
 
+  const vw = videoEl.videoWidth;
+  const vh = videoEl.videoHeight;
+
+  // 1. Coba deteksi wajah native browser (Shape Detection API / FaceDetector) jika ada di Android Chrome / macOS
+  if ('FaceDetector' in window) {
+    try {
+      const FaceDetectorClass = (window as any).FaceDetector;
+      const detector = new FaceDetectorClass({ maxDetectedFaces: 2, fastMode: true });
+      const faces = await detector.detect(videoEl);
+      if (faces && faces.length > 0) {
+        const primary = faces[0];
+        const box = primary.boundingBox;
+        return {
+          hasPerson: true,
+          score: 96,
+          bbox: [box.x, box.y, box.width, box.height],
+          allPredictions: [{ class: 'person', score: 0.96, bbox: [box.x, box.y, box.width, box.height] }],
+        };
+      }
+    } catch (e) {
+      // fallback ke COCO-SSD
+    }
+  }
+
+  // 2. Gunakan COCO-SSD jika sudah siap
+  if (loadedModel) {
+    try {
+      const predictions: Array<{ class: string; score: number; bbox: [number, number, number, number] }> =
+        await loadedModel.detect(videoEl);
+
+      // Cari kelas 'person' dengan ambang batas yang ramah selfie kamera ponsel (>= 0.28)
+      const personPred = predictions.find((p) => p.class.toLowerCase() === 'person' && p.score >= 0.28);
+      if (personPred) {
+        return {
+          hasPerson: true,
+          score: Math.round(personPred.score * 100),
+          bbox: personPred.bbox,
+          allPredictions: predictions,
+        };
+      }
+
+      // Jika ada objek lain bukan manusia
+      if (predictions.length > 0) {
+        return {
+          hasPerson: false,
+          score: 0,
+          allPredictions: predictions,
+        };
+      }
+    } catch (err) {
+      console.warn('COCO-SSD error:', err);
+    }
+  }
+
+  // 3. Fast Facial Skin-Tone & Feature Centroid Analyzer (Fallback Real-time)
+  // Menjamin deteksi wajah tetap responsif di preview laptop, Android, dan iPhone
   try {
-    const predictions: Array<{ class: string; score: number; bbox: [number, number, number, number] }> =
-      await loadedModel.detect(videoEl);
+    const sampleCanvas = document.createElement('canvas');
+    const sw = 64;
+    const sh = 48;
+    sampleCanvas.width = sw;
+    sampleCanvas.height = sh;
+    const sctx = sampleCanvas.getContext('2d', { willReadFrequently: true });
+    if (sctx) {
+      sctx.drawImage(videoEl, 0, 0, sw, sh);
+      const imgData = sctx.getImageData(0, 0, sw, sh).data;
 
-    // Cari objek kelas 'person' dengan confidence di atas 0.55
-    const personPred = predictions.find((p) => p.class.toLowerCase() === 'person' && p.score >= 0.55);
+      let skinPixelCount = 0;
+      let minX = sw, maxX = 0, minY = sh, maxY = 0;
 
-    return {
-      hasPerson: !!personPred,
-      score: personPred ? Math.round(personPred.score * 100) : 0,
-      bbox: personPred ? personPred.bbox : undefined,
-      allPredictions: predictions,
-    };
+      // Area pencarian di area tengah 70% frame
+      const startX = Math.floor(sw * 0.15);
+      const endX = Math.floor(sw * 0.85);
+      const startY = Math.floor(sh * 0.1);
+      const endY = Math.floor(sh * 0.9);
+
+      for (let y = startY; y < endY; y++) {
+        for (let x = startX; x < endX; x++) {
+          const idx = (y * sw + x) * 4;
+          const r = imgData[idx];
+          const g = imgData[idx + 1];
+          const b = imgData[idx + 2];
+
+          // Deteksi warna kulit manusia (Universal Skin-Tone rule)
+          const isSkin =
+            r > 80 &&
+            g > 40 &&
+            b > 20 &&
+            r > g &&
+            r > b &&
+            Math.abs(r - g) > 12 &&
+            r - b > 15;
+
+          if (isSkin) {
+            skinPixelCount++;
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+          }
+        }
+      }
+
+      const searchedPixels = (endX - startX) * (endY - startY);
+      const skinRatio = skinPixelCount / searchedPixels;
+
+      // Jika ada proporsi warna wajah manusia (12% - 85% dari area tengah)
+      if (skinRatio >= 0.12 && skinRatio <= 0.88 && maxX > minX && maxY > minY) {
+        const scaleX = vw / sw;
+        const scaleY = vh / sh;
+        const boxX = Math.max(0, Math.floor(minX * scaleX));
+        const boxY = Math.max(0, Math.floor(minY * scaleY));
+        const boxW = Math.min(vw - boxX, Math.floor((maxX - minX + 6) * scaleX));
+        const boxH = Math.min(vh - boxY, Math.floor((maxY - minY + 6) * scaleY));
+
+        const calculatedScore = Math.min(98, Math.round(75 + skinRatio * 30));
+        return {
+          hasPerson: true,
+          score: calculatedScore,
+          bbox: [boxX, boxY, boxW, boxH],
+          allPredictions: [{ class: 'person', score: calculatedScore / 100, bbox: [boxX, boxY, boxW, boxH] }],
+        };
+      }
+    }
   } catch (err) {
-    console.error('Error saat deteksi frame:', err);
-    return { hasPerson: false, score: 0, allPredictions: [] };
+    // fallback
   }
+
+  return { hasPerson: false, score: 0, allPredictions: [] };
 }
 
+let scanLineOffset = 0;
+
 /**
- * Menggambar Canvas Overlay di atas video dengan Bounding Box Neon Green
+ * Menggambar Canvas Overlay di atas video dengan Bounding Box Hijau (jika terdeteksi)
+ * atau Kotak Bidik Merah / Scanning Viewfinder (jika belum terdeteksi)
  */
 export function drawDetectionOverlay(
   canvas: HTMLCanvasElement,
   video: HTMLVideoElement,
-  detection: DetectionResult
+  detection: DetectionResult,
+  isMirrored: boolean = false
 ): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
-  const width = video.videoWidth || canvas.width;
-  const height = video.videoHeight || canvas.height;
+  const width = video.videoWidth || canvas.width || 640;
+  const height = video.videoHeight || canvas.height || 480;
 
   if (canvas.width !== width || canvas.height !== height) {
     canvas.width = width;
@@ -111,24 +228,26 @@ export function drawDetectionOverlay(
 
   ctx.clearRect(0, 0, width, height);
 
+  // KONDISI 1: SISWA TERDETEKSI (KOTAK NEON HIJAU)
   if (detection.hasPerson && detection.bbox) {
-    const [x, y, w, h] = detection.bbox;
+    const [origX, y, w, h] = detection.bbox;
+    const x = isMirrored ? Math.max(0, width - (origX + w)) : origX;
 
     // Bounding Box Neon Hijau
-    ctx.strokeStyle = '#059669';
-    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#10b981';
+    ctx.lineWidth = 3.5;
     ctx.shadowColor = '#10b981';
-    ctx.shadowBlur = 8;
+    ctx.shadowBlur = 12;
     ctx.strokeRect(x, y, w, h);
 
-    // Fill semi-transparan di dalam box
-    ctx.fillStyle = 'rgba(5, 150, 105, 0.08)';
+    // Fill transparan di dalam box
+    ctx.fillStyle = 'rgba(16, 185, 129, 0.12)';
     ctx.fillRect(x, y, w, h);
 
-    // Sudut aksen
-    const cornerSize = Math.min(20, w * 0.2, h * 0.2);
+    // Sudut aksen kokoh
+    const cornerSize = Math.min(24, w * 0.25, h * 0.25);
     ctx.lineWidth = 5;
-    ctx.strokeStyle = '#10b981';
+    ctx.strokeStyle = '#34d399';
 
     // Kiri-atas
     ctx.beginPath();
@@ -155,51 +274,138 @@ export function drawDetectionOverlay(
     ctx.beginPath();
     ctx.moveTo(x + w - cornerSize, y + h);
     ctx.lineTo(x + w, y + h);
-    ctx.lineTo(x + w - cornerSize, y + h);
+    ctx.lineTo(x + w, y + cornerSize);
     ctx.stroke();
 
     ctx.shadowBlur = 0;
 
-    // Label Badge
-    const label = `Siswa Terdeteksi: ${detection.score}%`;
-    ctx.font = '600 13px "Plus Jakarta Sans", sans-serif';
+    // Label Badge Hijau
+    const label = `✓ Siswa Terdeteksi (${detection.score}%)`;
+    ctx.font = 'bold 13px "Plus Jakarta Sans", sans-serif';
     const textWidth = ctx.measureText(label).width;
 
-    const badgeX = Math.max(10, x);
-    const badgeY = Math.max(26, y - 8);
+    const badgeX = Math.max(12, Math.min(width - textWidth - 30, x));
+    const badgeY = Math.max(28, y - 8);
 
-    ctx.fillStyle = 'rgba(6, 78, 59, 0.9)';
-    ctx.fillRect(badgeX - 4, badgeY - 20, textWidth + 22, 24);
+    ctx.fillStyle = 'rgba(6, 78, 59, 0.95)';
+    ctx.fillRect(badgeX, badgeY - 22, textWidth + 24, 26);
 
     ctx.strokeStyle = '#10b981';
     ctx.lineWidth = 1.5;
-    ctx.strokeRect(badgeX - 4, badgeY - 20, textWidth + 22, 24);
+    ctx.strokeRect(badgeX, badgeY - 22, textWidth + 24, 26);
 
     ctx.fillStyle = '#34d399';
     ctx.beginPath();
-    ctx.arc(badgeX + 3, badgeY - 8, 4, 0, Math.PI * 2);
+    ctx.arc(badgeX + 10, badgeY - 9, 4, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.fillStyle = '#ffffff';
-    ctx.fillText(label, badgeX + 13, badgeY - 4);
-  } else if (detection.allPredictions && detection.allPredictions.length > 0) {
+    ctx.fillText(label, badgeX + 18, badgeY - 5);
+  }
+  // KONDISI 2: ADA OBJEK BUKAN MANUSIA (KOTAK MERAH OBJEK)
+  else if (detection.allPredictions && detection.allPredictions.length > 0) {
     const topNonPerson = detection.allPredictions[0];
-    const [x, y, w, h] = topNonPerson.bbox;
+    const [origX, y, w, h] = topNonPerson.bbox;
+    const x = isMirrored ? Math.max(0, width - (origX + w)) : origX;
 
-    ctx.strokeStyle = '#e11d48';
-    ctx.lineWidth = 2.5;
-    ctx.setLineDash([5, 5]);
+    ctx.strokeStyle = '#f43f5e';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([6, 6]);
     ctx.strokeRect(x, y, w, h);
     ctx.setLineDash([]);
 
     const alertText = `Bukan Siswa (${topNonPerson.class})`;
-    ctx.font = '600 12px "Plus Jakarta Sans", sans-serif';
+    ctx.font = 'bold 12px "Plus Jakarta Sans", sans-serif';
     const tw = ctx.measureText(alertText).width;
 
-    ctx.fillStyle = 'rgba(159, 18, 57, 0.9)';
-    ctx.fillRect(x, Math.max(20, y - 6) - 18, tw + 12, 22);
+    ctx.fillStyle = 'rgba(159, 18, 57, 0.95)';
+    ctx.fillRect(x, Math.max(22, y - 6) - 20, tw + 16, 24);
     ctx.fillStyle = '#ffffff';
-    ctx.fillText(alertText, x + 6, Math.max(20, y - 6) - 4);
+    ctx.fillText(alertText, x + 8, Math.max(22, y - 6) - 4);
+  }
+  // KONDISI 3: BELUM TERDETEKSI / MENCARI WAJAH (KOTAK BIDIK MERAH & GARIS SCANNER)
+  else {
+    // Kotak bidik target di tengah layar
+    const boxW = Math.round(width * 0.58);
+    const boxH = Math.round(height * 0.68);
+    const boxX = Math.round((width - boxW) / 2);
+    const boxY = Math.round((height - boxH) / 2);
+
+    // Garis putus-putus merah
+    ctx.strokeStyle = 'rgba(244, 63, 94, 0.65)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 6]);
+    ctx.strokeRect(boxX, boxY, boxW, boxH);
+    ctx.setLineDash([]);
+
+    // 4 Sudut siku-siku merah terang
+    const cornerSize = 24;
+    ctx.strokeStyle = '#f43f5e';
+    ctx.lineWidth = 4;
+    ctx.shadowColor = '#f43f5e';
+    ctx.shadowBlur = 8;
+
+    // Kiri-atas
+    ctx.beginPath();
+    ctx.moveTo(boxX, boxY + cornerSize);
+    ctx.lineTo(boxX, boxY);
+    ctx.lineTo(boxX + cornerSize, boxY);
+    ctx.stroke();
+
+    // Kanan-atas
+    ctx.beginPath();
+    ctx.moveTo(boxX + boxW - cornerSize, boxY);
+    ctx.lineTo(boxX + boxW, boxY);
+    ctx.lineTo(boxX + boxW, boxY + cornerSize);
+    ctx.stroke();
+
+    // Kiri-bawah
+    ctx.beginPath();
+    ctx.moveTo(boxX, boxY + boxH - cornerSize);
+    ctx.lineTo(boxX, boxY + boxH);
+    ctx.lineTo(boxX + cornerSize, boxY + boxH);
+    ctx.stroke();
+
+    // Kanan-bawah
+    ctx.beginPath();
+    ctx.moveTo(boxX + boxW - cornerSize, boxY + boxH);
+    ctx.lineTo(boxX + boxW, boxY + boxH);
+    ctx.lineTo(boxX + boxW, boxY + boxH - cornerSize);
+    ctx.stroke();
+
+    ctx.shadowBlur = 0;
+
+    // Garis laser scanning merah/cyan yang bergerak naik turun
+    scanLineOffset = (scanLineOffset + 2.5) % (boxH - 10);
+    const laserY = boxY + 5 + scanLineOffset;
+    ctx.strokeStyle = 'rgba(244, 63, 94, 0.5)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(boxX + 6, laserY);
+    ctx.lineTo(boxX + boxW - 6, laserY);
+    ctx.stroke();
+
+    // Badge Panduan Merah di Atas Kotak
+    const label = 'Mencari Wajah Siswa...';
+    ctx.font = 'bold 12px "Plus Jakarta Sans", sans-serif';
+    const textWidth = ctx.measureText(label).width;
+    const badgeX = Math.round((width - (textWidth + 24)) / 2);
+    const badgeY = Math.max(26, boxY - 10);
+
+    ctx.fillStyle = 'rgba(159, 18, 57, 0.9)';
+    ctx.fillRect(badgeX, badgeY - 20, textWidth + 24, 24);
+    ctx.strokeStyle = 'rgba(244, 63, 94, 0.8)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(badgeX, badgeY - 20, textWidth + 24, 24);
+
+    // Titik merah berkedip
+    ctx.fillStyle = '#f43f5e';
+    ctx.beginPath();
+    ctx.arc(badgeX + 10, badgeY - 8, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(label, badgeX + 18, badgeY - 4);
   }
 }
 

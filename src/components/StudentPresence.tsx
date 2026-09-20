@@ -228,26 +228,31 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
       if (
         videoRef.current &&
         canvasRef.current &&
-        videoRef.current.readyState >= 2 &&
-        !aiLoading
+        videoRef.current.readyState >= 2
       ) {
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
+        if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+          canvas.width = video.videoWidth || 640;
+          canvas.height = video.videoHeight || 480;
+        }
+
+        const isUserMode = facingMode === 'user';
+
         if (!isDetecting) {
           isDetecting = true;
           try {
-            const video = videoRef.current;
-            const canvas = canvasRef.current;
-            if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
-              canvas.width = video.videoWidth || 640;
-              canvas.height = video.videoHeight || 480;
-            }
             const result = await detectObjects(video);
             setLatestDetection(result);
-            drawDetectionOverlay(canvas, video, result);
+            drawDetectionOverlay(canvas, video, result, isUserMode);
           } catch (err) {
             console.warn('Detection error:', err);
           } finally {
             isDetecting = false;
           }
+        } else {
+          // Tetap update animasi garis laser scanner saat background detector memproses
+          drawDetectionOverlay(canvas, video, latestDetection, isUserMode);
         }
       }
       animationFrameRef.current = requestAnimationFrame(runLoop);
@@ -259,7 +264,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [aiLoading, cameraActive]);
+  }, [facingMode, cameraActive, latestDetection]);
 
   // Pengambilan foto 2 sudut BeReal (Wajah & Suasana) secara cepat dan otomatis
   const handleStartCapture = async () => {
@@ -422,7 +427,22 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
     }
   };
 
-  const isPersonValid = latestDetection.hasPerson;
+  const [manualCaptureAllowed, setManualCaptureAllowed] = useState<boolean>(false);
+
+  // Jika kamera aktif selama 3 detik tapi AI lambat membaca di HP spesifikasi rendah, aktifkan fallback tombol ambil foto
+  useEffect(() => {
+    let timer: any;
+    if (cameraActive && !latestDetection.hasPerson) {
+      timer = setTimeout(() => {
+        setManualCaptureAllowed(true);
+      }, 3500);
+    } else if (latestDetection.hasPerson) {
+      setManualCaptureAllowed(false);
+    }
+    return () => clearTimeout(timer);
+  }, [cameraActive, latestDetection.hasPerson]);
+
+  const isPersonValid = latestDetection.hasPerson || manualCaptureAllowed;
   const isNameValid = studentName.trim().length >= 2;
   const isSubmitDisabled = !isNameValid || !isPersonValid || submitting;
 
@@ -718,9 +738,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
             {/* Canvas Overlay Bounding Box */}
             <canvas
               ref={canvasRef}
-              className={`absolute inset-0 w-full h-full pointer-events-none ${
-                facingMode === 'user' ? 'scale-x-[-1]' : ''
-              }`}
+              className="absolute inset-0 w-full h-full pointer-events-none"
             />
 
             {/* Flash Effect */}
@@ -782,7 +800,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
             {/* AI Status Badge */}
             {!aiLoading && !cameraError && (
               <div className="absolute top-3 left-3 z-10">
-                {isPersonValid ? (
+                {latestDetection.hasPerson ? (
                   <motion.div
                     className="px-3 py-1 rounded-full bg-slate-900/85 border border-emerald-500 text-emerald-300 text-xs font-bold flex items-center gap-1.5 backdrop-blur-xs shadow-xs"
                     animate={{ scale: [1, 1.03, 1] }}
@@ -791,6 +809,11 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
                     <span>Siswa Terdeteksi ({latestDetection.score}%)</span>
                   </motion.div>
+                ) : manualCaptureAllowed ? (
+                  <div className="px-3 py-1 rounded-full bg-slate-900/85 border border-emerald-400/80 text-emerald-300 text-xs font-bold flex items-center gap-1.5 backdrop-blur-xs shadow-xs">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                    <span>Kamera Siap Difoto</span>
+                  </div>
                 ) : (
                   <div className="px-3 py-1 rounded-full bg-slate-900/85 border border-rose-500/70 text-rose-300 text-xs font-bold flex items-center gap-1.5 backdrop-blur-xs shadow-xs">
                     <span className="w-2 h-2 rounded-full bg-rose-500"></span>
