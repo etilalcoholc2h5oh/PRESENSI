@@ -7,12 +7,12 @@ export const MADRASAH_INFO = {
   address: 'Jl. Kates No. 34, Siswodipuran, Kec. Boyolali, Kabupaten Boyolali, Jawa Tengah 57311',
 };
 
-// Lokasi Mushola & Lapangan MAN 1 Boyolali (Jl. Kates, Siswodipuran, Boyolali)
+// Lokasi Kompleks MAN 1 Boyolali (Jl. Kates No. 34, Siswodipuran - Mushola, Lapangan, Kantor Guru & Seluruh Kelas)
 export const DEFAULT_GEOFENCE: GeofenceConfig = {
-  latitude: -7.534839,
-  longitude: 110.597651,
-  radiusMeters: 250,
-  locationName: 'Mushola & Lingkungan MAN 1 Boyolali (Jl. Kates)',
+  latitude: -7.540982,
+  longitude: 110.599143,
+  radiusMeters: 600,
+  locationName: 'MAN 1 Boyolali (Jl. Kates No. 34 - Mushola, Kantor Guru & Kelas)',
 };
 
 export const CLASSES = [

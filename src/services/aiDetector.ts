@@ -7,8 +7,168 @@ declare global {
   }
 }
 
+// Kamus super lengkap 80+ kelas objek COCO-SSD ke Bahasa Indonesia sehari-hari, sekolah, dan perlengkapan (Tanpa Ikon)
+export const COCO_TRANSLATIONS: Record<
+  string,
+  { label: string; isVehicle?: boolean; isSchool?: boolean; category?: string }
+> = {
+  // Manusia & Diri
+  person: { label: 'Siswa / Orang', category: 'Manusia' },
+
+  // Kendaraan & Transportasi
+  bicycle: { label: 'Sepeda Gowes', isVehicle: true, category: 'Kendaraan' },
+  car: { label: 'Mobil', isVehicle: true, category: 'Kendaraan' },
+  motorcycle: { label: 'Sepeda Motor', isVehicle: true, category: 'Kendaraan' },
+  airplane: { label: 'Pesawat Terbang', isVehicle: true, category: 'Kendaraan' },
+  bus: { label: 'Bus / Kendaraan Besar', isVehicle: true, category: 'Kendaraan' },
+  train: { label: 'Kereta Api', isVehicle: true, category: 'Kendaraan' },
+  truck: { label: 'Truk / Kendaraan Muatan', isVehicle: true, category: 'Kendaraan' },
+  boat: { label: 'Perahu / Kapal', isVehicle: true, category: 'Kendaraan' },
+
+  // Fasilitas Luar / Jalan / Rambu
+  traffic_light: { label: 'Lampu Lalu Lintas / Tiang', category: 'Rambu Jalan' },
+  fire_hydrant: { label: 'Pilar Jalan / Hydrant', category: 'Fasilitas' },
+  stop_sign: { label: 'Rambu Berhenti / Rambu Jalan', category: 'Rambu Jalan' },
+  parking_meter: { label: 'Mesin Parkir / Tiang Parkir', category: 'Fasilitas' },
+  bench: { label: 'Bangku Taman / Teras Madrasah', category: 'Perabot' },
+
+  // Hewan & Peliharaan
+  bird: { label: 'Burung', category: 'Hewan' },
+  cat: { label: 'Kucing', category: 'Hewan' },
+  dog: { label: 'Anjing', category: 'Hewan' },
+  horse: { label: 'Kuda', category: 'Hewan' },
+  sheep: { label: 'Domba / Kambing', category: 'Hewan' },
+  cow: { label: 'Sapi', category: 'Hewan' },
+  elephant: { label: 'Gajah', category: 'Hewan' },
+  bear: { label: 'Beruang', category: 'Hewan' },
+  zebra: { label: 'Zebra', category: 'Hewan' },
+  giraffe: { label: 'Jerapah', category: 'Hewan' },
+
+  // Aksesoris & Perlengkapan Pribadi
+  backpack: { label: 'Tas Ransel / Tas Sekolah', isSchool: true, category: 'Perlengkapan' },
+  umbrella: { label: 'Payung', category: 'Aksesoris' },
+  handbag: { label: 'Tas Tangan / Dompet Jinjing', category: 'Aksesoris' },
+  tie: { label: 'Dasi Seragam Madrasah', isSchool: true, category: 'Pakaian' },
+  suitcase: { label: 'Koper / Kotak Besar', category: 'Perlengkapan' },
+
+  // Olahraga & Permainan
+  frisbee: { label: 'Piring Terbang / Frisbee', category: 'Olahraga' },
+  skis: { label: 'Papan Ski', category: 'Olahraga' },
+  snowboard: { label: 'Papan Seluncur', category: 'Olahraga' },
+  sports_ball: { label: 'Bola Olahraga (Futsal / Voli / Basket)', isSchool: true, category: 'Olahraga' },
+  kite: { label: 'Layang-layang', category: 'Permainan' },
+  baseball_bat: { label: 'Tongkat Kasti / Baseball', isSchool: true, category: 'Olahraga' },
+  baseball_glove: { label: 'Sarung Tangan Baseball', category: 'Olahraga' },
+  skateboard: { label: 'Skateboard / Papan Roda', category: 'Olahraga' },
+  surfboard: { label: 'Papan Selancar', category: 'Olahraga' },
+  tennis_racket: { label: 'Raket Bulu Tangkis / Tenis', isSchool: true, category: 'Olahraga' },
+
+  // Wadah, Kosmetik, Botol & Parfum
+  bottle: { label: 'Botol Parfum / Minuman / Minyak Wangi / Skincare', category: 'Wadah & Kosmetik' },
+  wine_glass: { label: 'Gelas Kaca / Botol Kristal', category: 'Wadah' },
+  cup: { label: 'Cangkir / Mug Minum', category: 'Peralatan Makan' },
+  fork: { label: 'Garpu Makan', category: 'Peralatan Makan' },
+  knife: { label: 'Pisau Lipat / Pisau', category: 'Peralatan' },
+  spoon: { label: 'Sendok Makan', category: 'Peralatan Makan' },
+  bowl: { label: 'Mangkuk / Wadah Bulat', category: 'Peralatan Makan' },
+
+  // Makanan & Buah
+  banana: { label: 'Pisang', category: 'Makanan' },
+  apple: { label: 'Apel / Buah', category: 'Makanan' },
+  sandwich: { label: 'Roti / Bekal Makanan', category: 'Makanan' },
+  orange: { label: 'Jeruk / Buah', category: 'Makanan' },
+  broccoli: { label: 'Sayuran Brokoli', category: 'Makanan' },
+  carrot: { label: 'Wortel / Sayuran', category: 'Makanan' },
+  hot_dog: { label: 'Sosis / Roti Makanan', category: 'Makanan' },
+  pizza: { label: 'Pizza / Makanan Bekal', category: 'Makanan' },
+  donut: { label: 'Kue Donat / Roti Manis', category: 'Makanan' },
+  cake: { label: 'Kue / Tart', category: 'Makanan' },
+
+  // Perabot Rumah & Madrasah
+  chair: { label: 'Kursi Belajar / Kursi Guru', isSchool: true, category: 'Perabot' },
+  couch: { label: 'Sofa Tamu / Ruang Guru', category: 'Perabot' },
+  potted_plant: { label: 'Tanaman Hias / Pot Bunga', category: 'Dekorasi' },
+  bed: { label: 'Kasur Periksa / Tempat Tidur UKS', isSchool: true, category: 'Fasilitas' },
+  dining_table: { label: 'Meja Kelas / Meja Piket Guru', isSchool: true, category: 'Perabot' },
+  toilet: { label: 'Kloset / Tempat Wudhu', category: 'Sanitasi' },
+
+  // Elektronik, Gadget & Belajar
+  tv: { label: 'Layar TV / Monitor Proyektor', isSchool: true, category: 'Elektronik' },
+  laptop: { label: 'Laptop Komputer Siswa / Guru', isSchool: true, category: 'Elektronik' },
+  mouse: { label: 'Mouse Komputer', isSchool: true, category: 'Elektronik' },
+  remote: { label: 'Remote AC / TV Kelas', isSchool: true, category: 'Elektronik' },
+  keyboard: { label: 'Keyboard Komputer / Laboratorium', isSchool: true, category: 'Elektronik' },
+  cell_phone: { label: 'HP / Smartphone', category: 'Gadget' },
+
+  // Dapur & Alat Rumah Tangga
+  microwave: { label: 'Peralatan Microwave / Box Elektronik', category: 'Elektronik' },
+  oven: { label: 'Kotak Perangkat / Oven', category: 'Peralatan' },
+  toaster: { label: 'Pemanggang Roti / Alat Kecil', category: 'Peralatan' },
+  sink: { label: 'Wastafel Cuci Tangan / Tempat Wudhu', isSchool: true, category: 'Sanitasi' },
+  refrigerator: { label: 'Kulkas / Lemari Pendingin / Loker', category: 'Peralatan' },
+
+  // Perlengkapan Belajar & Lainnya
+  book: { label: 'Buku Pelajaran / Mushaf Al-Qur\'an / Kitab', isSchool: true, category: 'Belajar' },
+  clock: { label: 'Jam Dinding Mushola / Jam Kelas', isSchool: true, category: 'Fasilitas' },
+  vase: { label: 'Vas Bunga / Botol Kaca Pajangan', category: 'Dekorasi' },
+  scissors: { label: 'Gunting Kertas / ATK Siswa', isSchool: true, category: 'ATK' },
+  teddy_bear: { label: 'Boneka / Gantungan Tas', category: 'Mainan' },
+  hair_drier: { label: 'Pengering Rambut / Alat Elektronik', category: 'Peralatan' },
+  toothbrush: { label: 'Sikat Gigi / Alat Kebersihan', category: 'Kebersihan' },
+};
+
+export function getObjectTranslation(rawClass: string): { label: string; isVehicle?: boolean; isSchool?: boolean; category?: string } {
+  const normalized = rawClass.toLowerCase().trim().replace(/[\s-]+/g, '_');
+  if (COCO_TRANSLATIONS[normalized]) {
+    return COCO_TRANSLATIONS[normalized];
+  }
+  // Alias tambahan untuk variasi nama objek
+  const aliasMap: Record<string, string> = {
+    mobile_phone: 'cell_phone',
+    phone: 'cell_phone',
+    smartphone: 'cell_phone',
+    pc: 'laptop',
+    computer: 'laptop',
+    display: 'tv',
+    screen: 'tv',
+    monitor: 'tv',
+    table: 'dining_table',
+    desk: 'dining_table',
+    sofa: 'couch',
+    perfume: 'bottle',
+    fragrance: 'bottle',
+    cologne: 'bottle',
+    tumbler: 'bottle',
+    shampoo: 'bottle',
+    lotion: 'bottle',
+    pen: 'scissors',
+    pencil: 'scissors',
+    notebook: 'book',
+    quran: 'book',
+    mushaf: 'book',
+    watch: 'clock',
+    wall_clock: 'clock',
+    football: 'sports_ball',
+    basketball: 'sports_ball',
+    volleyball: 'sports_ball',
+  };
+
+  const mappedKey = aliasMap[normalized];
+  if (mappedKey && COCO_TRANSLATIONS[mappedKey]) {
+    return COCO_TRANSLATIONS[mappedKey];
+  }
+
+  // Format rapi jika belum ada di kamus
+  const capitalized = rawClass.charAt(0).toUpperCase() + rawClass.slice(1);
+  return { label: capitalized, category: 'Lainnya' };
+}
+
 let modelPromise: Promise<any> | null = null;
 let loadedModel: any = null;
+
+// Offscreen small canvas untuk komputasi cepat (sat-set) tanpa render lag
+let fastCanvas: HTMLCanvasElement | null = null;
+let fastCtx: CanvasRenderingContext2D | null = null;
 
 export async function loadCocoSsdModel(onProgress?: (msg: string) => void): Promise<any> {
   if (loadedModel) return loadedModel;
@@ -16,11 +176,11 @@ export async function loadCocoSsdModel(onProgress?: (msg: string) => void): Prom
 
   modelPromise = (async () => {
     try {
-      onProgress?.('Memeriksa engine TensorFlow.js...');
+      onProgress?.('Mengaktifkan AI Sat-Set (Akselerasi GPU/WebGL)...');
 
       let retries = 0;
       while (!window.cocoSsd && retries < 20) {
-        await new Promise((r) => setTimeout(r, 200));
+        await new Promise((r) => setTimeout(r, 150));
         retries++;
       }
 
@@ -30,10 +190,27 @@ export async function loadCocoSsdModel(onProgress?: (msg: string) => void): Prom
         await loadScript('https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js');
       }
 
+      // Aktifkan backend WebGL / CPU tercepat
+      if (window.tf) {
+        try {
+          if (window.tf.getBackend() !== 'webgl') {
+            await window.tf.setBackend('webgl');
+          }
+          window.tf.enableProdMode();
+        } catch {
+          // fallback jika webgl tidak tersedia di browser tertentu
+        }
+      }
+
       if (window.cocoSsd) {
-        onProgress?.('Menginisialisasi neural network COCO-SSD...');
-        loadedModel = await window.cocoSsd.load({ base: 'mobilenet_v2' });
-        onProgress?.('Model AI Siap');
+        onProgress?.('Inisialisasi Model AI Presensi...');
+        // mobilenet_v2 memiliki akurasi klasifikasi objek (botol, orang, kendaraan) jauh lebih tinggi dibanding lite
+        try {
+          loadedModel = await window.cocoSsd.load({ base: 'mobilenet_v2' });
+        } catch {
+          loadedModel = await window.cocoSsd.load({ base: 'lite_mobilenet_v2' });
+        }
+        onProgress?.('AI Presensi Siap');
         return loadedModel;
       } else {
         throw new Error('Script COCO-SSD tidak dapat dimuat.');
@@ -63,8 +240,11 @@ function loadScript(src: string): Promise<void> {
   });
 }
 
+
+
+
 /**
- * Melakukan deteksi objek pada video element
+ * Melakukan deteksi objek pada video element (Optimasi Sat-Set: Frame Downscaling)
  */
 export async function detectObjects(videoEl: HTMLVideoElement): Promise<DetectionResult> {
   // Cek kesiapan video
@@ -96,11 +276,57 @@ export async function detectObjects(videoEl: HTMLVideoElement): Promise<Detectio
     }
   }
 
-  // 2. Gunakan COCO-SSD jika sudah siap
+  // 2. Gunakan COCO-SSD dengan Akselerasi Sat-Set (Resize video frame to 384px)
   if (loadedModel) {
     try {
-      const predictions: Array<{ class: string; score: number; bbox: [number, number, number, number] }> =
-        await loadedModel.detect(videoEl);
+      // Buat / gunakan offscreen canvas untuk kompresi resolusi inferensi agar 3x lebih cepat (sat-set)
+      if (!fastCanvas) {
+        fastCanvas = document.createElement('canvas');
+        fastCtx = fastCanvas.getContext('2d', { willReadFrequently: true });
+      }
+
+      // Resolusi inferensi optimal: 384px (cukup tajam untuk mendeteksi mobil, motor, hp, orang, tapi 4x lebih ringan dari Full HD)
+      const inferW = 384;
+      const inferH = Math.round((vh / vw) * inferW);
+      if (fastCanvas.width !== inferW || fastCanvas.height !== inferH) {
+        fastCanvas.width = inferW;
+        fastCanvas.height = inferH;
+      }
+
+      if (fastCtx) {
+        fastCtx.drawImage(videoEl, 0, 0, inferW, inferH);
+      }
+
+      const inputElement = fastCanvas || videoEl;
+      const scaleBackX = vw / inferW;
+      const scaleBackY = vh / inferH;
+
+      // Gunakan minScore 0.38 untuk memangkas false positives (oven, toaster, dsb)
+      const rawPredictions: Array<{ class: string; score: number; bbox: [number, number, number, number] }> =
+        await loadedModel.detect(inputElement, 6, 0.38);
+
+      // Filter prediksi yang tidak masuk akal / noise (misal oven di tangan, dsb jika score < 0.45)
+      const filteredRaw = rawPredictions.filter((p) => {
+        const cls = p.class.toLowerCase();
+        if (cls === 'person') return p.score >= 0.28;
+        // Objek rumahan yang sering salah tebak (oven, toaster, microwave, book) butuh confidence lebih tinggi
+        if (['oven', 'toaster', 'microwave'].includes(cls)) {
+          return p.score >= 0.65;
+        }
+        return p.score >= 0.38;
+      });
+
+      // Skala kembali koordinat bounding box ke resolusi asli video kamera
+      const predictions = filteredRaw.map((p) => ({
+        class: p.class,
+        score: p.score,
+        bbox: [
+          Math.round(p.bbox[0] * scaleBackX),
+          Math.round(p.bbox[1] * scaleBackY),
+          Math.round(p.bbox[2] * scaleBackX),
+          Math.round(p.bbox[3] * scaleBackY),
+        ] as [number, number, number, number],
+      }));
 
       // Cari kelas 'person' dengan ambang batas yang ramah selfie kamera ponsel (>= 0.28)
       const personPred = predictions.find((p) => p.class.toLowerCase() === 'person' && p.score >= 0.28);
@@ -113,7 +339,7 @@ export async function detectObjects(videoEl: HTMLVideoElement): Promise<Detectio
         };
       }
 
-      // Jika ada objek lain bukan manusia
+      // Jika ada objek lain bukan manusia (misal Mobil, Motor, Kursi, HP, Meja, dll.)
       if (predictions.length > 0) {
         return {
           hasPerson: false,
@@ -200,7 +426,11 @@ export async function detectObjects(videoEl: HTMLVideoElement): Promise<Detectio
     // fallback
   }
 
-  return { hasPerson: false, score: 0, allPredictions: [] };
+  return {
+    hasPerson: false,
+    score: 0,
+    allPredictions: [],
+  };
 }
 
 let scanLineOffset = 0;
@@ -280,7 +510,7 @@ export function drawDetectionOverlay(
     ctx.shadowBlur = 0;
 
     // Label Badge Hijau
-    const label = `✓ Siswa Terdeteksi (${detection.score}%)`;
+    const label = `Siswa Terdeteksi (${detection.score}%)`;
     ctx.font = 'bold 13px "Plus Jakarta Sans", sans-serif';
     const textWidth = ctx.measureText(label).width;
 
@@ -302,26 +532,67 @@ export function drawDetectionOverlay(
     ctx.fillStyle = '#ffffff';
     ctx.fillText(label, badgeX + 18, badgeY - 5);
   }
-  // KONDISI 2: ADA OBJEK BUKAN MANUSIA (KOTAK MERAH OBJEK)
+  // KONDISI 2: ADA OBJEK BUKAN MANUSIA (KOTAK SPESIFIK: MOBIL, MOTOR, JALAN/KENDARAAN, DLL.)
   else if (detection.allPredictions && detection.allPredictions.length > 0) {
-    const topNonPerson = detection.allPredictions[0];
-    const [origX, y, w, h] = topNonPerson.bbox;
-    const x = isMirrored ? Math.max(0, width - (origX + w)) : origX;
+    // Tampilkan hingga 3 objek yang terdeteksi dengan bounding box rapi & label bahasa Indonesia spesifik
+    const nonPersons = detection.allPredictions.filter((p) => p.class.toLowerCase() !== 'person').slice(0, 3);
+    const topPreds = nonPersons.length > 0 ? nonPersons : detection.allPredictions.slice(0, 2);
 
+    topPreds.forEach((pred, index) => {
+      const [origX, y, w, h] = pred.bbox;
+      const x = isMirrored ? Math.max(0, width - (origX + w)) : origX;
+      const translation = getObjectTranslation(pred.class);
+      const isTop = index === 0;
+
+      // Warna berbeda jika objek adalah kendaraan (Amber/Orange) atau objek lain (Rose)
+      const strokeColor = translation.isVehicle ? '#f59e0b' : '#f43f5e';
+      const bgColor = translation.isVehicle ? 'rgba(180, 83, 9, 0.95)' : 'rgba(159, 18, 57, 0.95)';
+
+      ctx.strokeStyle = strokeColor;
+      ctx.lineWidth = isTop ? 3.5 : 2;
+      ctx.setLineDash(isTop ? [6, 6] : [4, 4]);
+      ctx.strokeRect(x, y, w, h);
+      ctx.setLineDash([]);
+
+      // Fill tipis
+      ctx.fillStyle = translation.isVehicle ? 'rgba(245, 158, 11, 0.08)' : 'rgba(244, 63, 94, 0.08)';
+      ctx.fillRect(x, y, w, h);
+
+      // Label Spesifik Bahasa Indonesia (Tanpa Ikon Sesuai Permintaan)
+      const conf = Math.round(pred.score * 100);
+      const alertText = `Terdeteksi: ${translation.label} (${conf}%)`;
+      ctx.font = 'bold 12px "Plus Jakarta Sans", sans-serif';
+      const tw = ctx.measureText(alertText).width;
+
+      const badgeX = Math.max(8, Math.min(width - tw - 24, x));
+      const badgeY = Math.max(22, y - 6);
+
+      ctx.fillStyle = bgColor;
+      ctx.fillRect(badgeX, badgeY - 20, tw + 18, 24);
+      ctx.strokeStyle = strokeColor;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(badgeX, badgeY - 20, tw + 18, 24);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(alertText, badgeX + 8, badgeY - 4);
+    });
+
+    // Peringatan di bagian bawah frame agar siswa paham belum boleh submit
+    const primaryTrans = getObjectTranslation(topPreds[0].class);
+    const bottomWarning = `Terdeteksi: ${primaryTrans.label} (Bukan Wajah Siswa - Posisikan Kamera ke Siswa)`;
+    ctx.font = '600 12px "Plus Jakarta Sans", sans-serif';
+    const bwWidth = ctx.measureText(bottomWarning).width;
+    const bwX = Math.max(12, Math.round((width - bwWidth) / 2));
+    const bwY = height - 20;
+
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+    ctx.fillRect(bwX - 12, bwY - 18, bwWidth + 24, 26);
     ctx.strokeStyle = '#f43f5e';
-    ctx.lineWidth = 3;
-    ctx.setLineDash([6, 6]);
-    ctx.strokeRect(x, y, w, h);
-    ctx.setLineDash([]);
+    ctx.lineWidth = 1;
+    ctx.strokeRect(bwX - 12, bwY - 18, bwWidth + 24, 26);
 
-    const alertText = `Bukan Siswa (${topNonPerson.class})`;
-    ctx.font = 'bold 12px "Plus Jakarta Sans", sans-serif';
-    const tw = ctx.measureText(alertText).width;
-
-    ctx.fillStyle = 'rgba(159, 18, 57, 0.95)';
-    ctx.fillRect(x, Math.max(22, y - 6) - 20, tw + 16, 24);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillText(alertText, x + 8, Math.max(22, y - 6) - 4);
+    ctx.fillStyle = '#fecdd3';
+    ctx.fillText(bottomWarning, bwX, bwY);
   }
   // KONDISI 3: BELUM TERDETEKSI / MENCARI WAJAH (KOTAK BIDIK MERAH & GARIS SCANNER)
   else {
@@ -408,6 +679,7 @@ export function drawDetectionOverlay(
     ctx.fillText(label, badgeX + 18, badgeY - 4);
   }
 }
+
 
 /**
  * Memainkan efek suara shutter kamera

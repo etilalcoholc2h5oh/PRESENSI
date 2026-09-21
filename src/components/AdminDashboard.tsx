@@ -29,6 +29,11 @@ import {
   saveSupabaseConfig,
   SUPABASE_SQL_SCHEMA,
 } from '../services/supabaseService';
+import {
+  getGeofenceConfig,
+  saveGeofenceConfig,
+  getCurrentPosition,
+} from '../services/geoService';
 
 interface AdminDashboardProps {
   records: AttendanceRecord[];
@@ -42,6 +47,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onRefreshData,
 }) => {
   // Filters State
+  const [selectedMonthYear, setSelectedMonthYear] = useState<string>(''); // e.g. "2026-05" for Mei 2026
   const [dateRangeStart, setDateRangeStart] = useState<string>('');
   const [dateRangeEnd, setDateRangeEnd] = useState<string>('');
   const [selectedClass, setSelectedClass] = useState<string>('');
@@ -107,6 +113,53 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setTimeout(() => setCopiedSql(false), 2500);
   };
 
+  // Geofence & Lokasi GPS Modal State
+  const [geofenceModalOpen, setGeofenceModalOpen] = useState(false);
+  const [geoConfig, setGeoConfig] = useState(() => getGeofenceConfig());
+  const [calibratingGps, setCalibratingGps] = useState(false);
+  const [geoMsg, setGeoMsg] = useState<{ text: string; isError: boolean } | null>(null);
+
+  const handleOpenGeofenceModal = () => {
+    setGeoConfig(getGeofenceConfig());
+    setGeoMsg(null);
+    setGeofenceModalOpen(true);
+  };
+
+  const handleCalibrateCurrentLocation = async () => {
+    setCalibratingGps(true);
+    setGeoMsg(null);
+    try {
+      const pos = await getCurrentPosition();
+      setGeoConfig((prev) => ({
+        ...prev,
+        latitude: parseFloat(pos.latitude.toFixed(6)),
+        longitude: parseFloat(pos.longitude.toFixed(6)),
+      }));
+      setGeoMsg({
+        text: `Titik GPS berhasil dikalibrasi sesuai posisi Anda saat ini (Akurasi: ±${Math.round(pos.accuracy)}m). Jangan lupa klik "Simpan Pengaturan".`,
+        isError: false,
+      });
+    } catch (err: any) {
+      setGeoMsg({
+        text: err.message || 'Gagal mengambil GPS untuk kalibrasi lokasi.',
+        isError: true,
+      });
+    } finally {
+      setCalibratingGps(false);
+    }
+  };
+
+  const handleSaveGeofence = () => {
+    saveGeofenceConfig(geoConfig);
+    setGeoMsg({
+      text: 'Pengaturan radius dan lokasi madrasah berhasil disimpan!',
+      isError: false,
+    });
+    setTimeout(() => {
+      setGeofenceModalOpen(false);
+    }, 1200);
+  };
+
   const applyDatePreset = (days: number) => {
     const end = new Date();
     const start = new Date();
@@ -116,6 +169,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const resetFilters = () => {
+    setSelectedMonthYear('');
     setDateRangeStart('');
     setDateRangeEnd('');
     setSelectedClass('');
@@ -128,10 +182,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const filteredRecords = useMemo(() => {
     return records.filter((rec) => {
       const recDate = new Date(rec.created_at).toISOString().slice(0, 10);
+      const recMonth = recDate.slice(0, 7); // e.g. "2026-05"
+
+      // Filter Bulan Tertentu (misal: "2026-05" untuk Mei)
+      if (selectedMonthYear && recMonth !== selectedMonthYear) return false;
+
+      // Filter Tanggal Rentang
       if (dateRangeStart && recDate < dateRangeStart) return false;
       if (dateRangeEnd && recDate > dateRangeEnd) return false;
+
+      // Filter Kelas (misal: "X A")
       if (selectedClass && rec.class !== selectedClass) return false;
+
+      // Filter Sholat
       if (selectedPrayer && rec.prayer_type !== selectedPrayer) return false;
+
+      // Filter Status
       if (selectedStatus) {
         const isLuar = rec.status === 'Di Luar Radius' || (rec.gps_status && rec.gps_status.toLowerCase().includes('luar'));
         if (selectedStatus === 'Di Luar Radius') {
@@ -142,6 +208,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           return false;
         }
       }
+
+      // Filter Pencarian Teks
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         const matchName = rec.name.toLowerCase().includes(q);
@@ -151,7 +219,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
       return true;
     });
-  }, [records, dateRangeStart, dateRangeEnd, selectedClass, selectedPrayer, selectedStatus, searchQuery]);
+  }, [records, selectedMonthYear, dateRangeStart, dateRangeEnd, selectedClass, selectedPrayer, selectedStatus, searchQuery]);
 
   // Statistics
   const stats = useMemo(() => {
@@ -174,7 +242,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [dateRangeStart, dateRangeEnd, selectedClass, selectedPrayer, selectedStatus, searchQuery, pageSize]);
+  }, [selectedMonthYear, dateRangeStart, dateRangeEnd, selectedClass, selectedPrayer, selectedStatus, searchQuery, pageSize]);
 
   const totalPages = Math.max(1, Math.ceil(filteredRecords.length / pageSize));
   const paginatedRecords = useMemo(() => {
@@ -184,7 +252,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const getFilterSummary = () => {
     let summary = 'Semua Periode';
-    if (dateRangeStart && dateRangeEnd) {
+    if (selectedMonthYear) {
+      const [y, m] = selectedMonthYear.split('-');
+      const monthNames = [
+        'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+        'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+      ];
+      const monthLabel = monthNames[parseInt(m, 10) - 1] || m;
+      summary = `Bulan ${monthLabel} ${y}`;
+    } else if (dateRangeStart && dateRangeEnd) {
       summary = `${dateRangeStart} s/d ${dateRangeEnd}`;
     } else if (dateRangeStart) {
       summary = `Mulai ${dateRangeStart}`;
@@ -287,6 +363,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 isCloudConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
               }`}
             />
+          </motion.button>
+
+          {/* Tombol Pengaturan Lokasi & Radius Geofence Madrasah */}
+          <motion.button
+            type="button"
+            id="btn-geofence-config"
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={handleOpenGeofenceModal}
+            className="px-3.5 py-2 rounded-2xl text-xs font-bold transition shadow-xs cursor-pointer flex items-center gap-2 border bg-white hover:bg-slate-50 text-indigo-900 border-indigo-200"
+            title="Pengaturan Lokasi GPS & Radius Geofencing Madrasah"
+          >
+            <MapPin className="w-3.5 h-3.5 text-indigo-600" />
+            <span>Radius GPS ({geoConfig.radiusMeters}m)</span>
           </motion.button>
 
           <motion.button
@@ -437,7 +527,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </h4>
             {/* Quick Preset Buttons */}
             <div className="flex flex-wrap items-center gap-1.5 text-xs">
-              <span className="text-slate-400 text-[11px]">Preset:</span>
+              <span className="text-slate-400 text-[11px]">Preset Cepat:</span>
               <button
                 type="button"
                 onClick={() => applyDatePreset(0)}
@@ -454,36 +544,75 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => applyDatePreset(30)}
+                onClick={() => {
+                  const now = new Date();
+                  const y = now.getFullYear();
+                  const m = String(now.getMonth() + 1).padStart(2, '0');
+                  setSelectedMonthYear(`${y}-${m}`);
+                  setDateRangeStart('');
+                  setDateRangeEnd('');
+                }}
                 className="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-medium transition cursor-pointer"
               >
-                1 Bulan
+                Bulan Ini
               </button>
               <button
                 type="button"
                 onClick={() => applyDatePreset(180)}
                 className="px-2.5 py-1 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 text-[11px] font-semibold transition cursor-pointer"
               >
-                6 Bulan
+                1 Semester (6 Bulan)
               </button>
               <button
                 type="button"
                 onClick={resetFilters}
-                className="px-2.5 py-1 rounded-xl text-emerald-700 hover:underline text-[11px] font-semibold ml-2 cursor-pointer"
+                className="px-2.5 py-1 rounded-xl text-rose-600 hover:underline text-[11px] font-semibold ml-2 cursor-pointer"
               >
-                Reset
+                Reset Filter
               </button>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3 text-xs">
+            {/* Filter Bulan Tertentu */}
+            <div className="bg-emerald-50/60 p-2 rounded-2xl border border-emerald-200">
+              <label className="block text-emerald-900 font-bold mb-1 flex items-center justify-between">
+                <span>Pilih Bulan:</span>
+                {selectedMonthYear && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMonthYear('')}
+                    className="text-[10px] text-emerald-700 hover:underline cursor-pointer"
+                  >
+                    Hapus
+                  </button>
+                )}
+              </label>
+              <input
+                type="month"
+                value={selectedMonthYear}
+                onChange={(e) => {
+                  setSelectedMonthYear(e.target.value);
+                  if (e.target.value) {
+                    setDateRangeStart('');
+                    setDateRangeEnd('');
+                  }
+                }}
+                className="w-full bg-white border border-emerald-300 rounded-xl px-2.5 py-1.5 text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none font-medium cursor-pointer"
+                title="Pilih bulan rekapitulasi (misal Mei 2026)"
+              />
+            </div>
+
             {/* Tanggal Mulai */}
             <div>
               <label className="block text-slate-600 font-bold mb-1">Dari Tanggal:</label>
               <input
                 type="date"
                 value={dateRangeStart}
-                onChange={(e) => setDateRangeStart(e.target.value)}
+                onChange={(e) => {
+                  setDateRangeStart(e.target.value);
+                  if (e.target.value) setSelectedMonthYear('');
+                }}
                 className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
               />
             </div>
@@ -493,7 +622,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <input
                 type="date"
                 value={dateRangeEnd}
-                onChange={(e) => setDateRangeEnd(e.target.value)}
+                onChange={(e) => {
+                  setDateRangeEnd(e.target.value);
+                  if (e.target.value) setSelectedMonthYear('');
+                }}
                 className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
               />
             </div>
@@ -558,6 +690,79 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             </div>
           </div>
+
+          {/* Active Filter Indicator / Breadcrumb */}
+          {(selectedMonthYear || selectedClass || dateRangeStart || dateRangeEnd || selectedPrayer || selectedStatus || searchQuery) && (
+            <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-2 text-xs">
+              <span className="text-slate-500 font-medium">Filter Aktif:</span>
+              {selectedMonthYear && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-100/80 text-emerald-900 font-semibold">
+                  <span>Bulan: {selectedMonthYear === '2026-05' ? 'Mei 2026' : selectedMonthYear}</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMonthYear('')}
+                    className="hover:text-emerald-700 cursor-pointer ml-0.5"
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
+              {selectedClass && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-100/80 text-indigo-900 font-semibold">
+                  <span>Kelas: {selectedClass}</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedClass('')}
+                    className="hover:text-indigo-700 cursor-pointer ml-0.5"
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
+              {selectedPrayer && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-100/80 text-teal-900 font-semibold">
+                  <span>Sholat: {selectedPrayer}</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPrayer('')}
+                    className="hover:text-teal-700 cursor-pointer ml-0.5"
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
+              {selectedStatus && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-200 text-slate-900 font-semibold">
+                  <span>Status: {selectedStatus}</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedStatus('')}
+                    className="hover:text-slate-700 cursor-pointer ml-0.5"
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
+              {(dateRangeStart || dateRangeEnd) && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-100 text-amber-900 font-semibold">
+                  <span>Tgl: {dateRangeStart || '...'} s/d {dateRangeEnd || '...'}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDateRangeStart('');
+                      setDateRangeEnd('');
+                    }}
+                    className="hover:text-amber-700 cursor-pointer ml-0.5"
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
+              <span className="text-slate-400 font-normal ml-auto text-[11px]">
+                Menampilkan <b>{filteredRecords.length}</b> data
+              </span>
+            </div>
+          )}
         </motion.div>
 
         {/* Mobile View: Tampilan Kartu Rekapitulasi Rapi & Responsif (Khusus Layar HP < md) */}
@@ -1131,7 +1336,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       : 'bg-amber-100 text-amber-800'
                   }`}
                 >
-                  {isCloudConnected ? '✓ Terhubung ke Supabase' : 'Mode Server Lokal Aktif'}
+                  {isCloudConnected ? 'Terhubung ke Supabase' : 'Mode Server Lokal Aktif'}
                 </span>
               </div>
               <p className="text-[11px] leading-relaxed text-slate-500">
@@ -1293,6 +1498,215 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         )}
       </AnimatePresence>
+
+      {/* MODAL PENGATURAN GEOFENCING & LOKASI MADRASAH */}
+      {geofenceModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+          <motion.div
+            className="bg-white border border-slate-200 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 text-slate-800 relative max-h-[90vh] overflow-y-auto"
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+          >
+            <button
+              type="button"
+              onClick={() => setGeofenceModalOpen(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-2.5">
+              <div className="p-2.5 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-700">
+                <MapPin className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900">
+                  Pengaturan Lokasi GPS & Radius Madrasah
+                </h3>
+                <p className="text-xs text-slate-500 font-medium">
+                  Atur titik pusat & batas radius sah presensi MAN 1 Boyolali
+                </p>
+              </div>
+            </div>
+
+            {geoMsg && (
+              <div
+                className={`p-3 rounded-2xl text-xs font-semibold ${
+                  geoMsg.isError
+                    ? 'bg-rose-50 border border-rose-200 text-rose-700'
+                    : 'bg-emerald-50 border border-emerald-200 text-emerald-700'
+                }`}
+              >
+                {geoMsg.text}
+              </div>
+            )}
+
+            {/* Quick Calibration Button */}
+            <div className="p-3.5 bg-gradient-to-r from-indigo-50/70 to-sky-50/70 rounded-2xl border border-indigo-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="space-y-0.5">
+                <span className="text-xs font-bold text-indigo-950 block">
+                  Kalibrasi Otomatis dari Perangkat
+                </span>
+                <p className="text-[11px] text-indigo-700 leading-relaxed">
+                  Sedang berada di kantor guru, mushola, atau kelas sekarang? Tekan tombol ini untuk mengambil koordinat GPS riil Anda saat ini.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleCalibrateCurrentLocation}
+                disabled={calibratingGps}
+                className="shrink-0 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50"
+              >
+                {calibratingGps ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <MapPin className="w-3.5 h-3.5" />
+                )}
+                <span>{calibratingGps ? 'Membaca GPS...' : 'Gunakan Posisi Saya'}</span>
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Label Area Madrasah:
+                </label>
+                <input
+                  type="text"
+                  value={geoConfig.locationName}
+                  onChange={(e) =>
+                    setGeoConfig((prev) => ({ ...prev, locationName: e.target.value }))
+                  }
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Latitude:</label>
+                  <input
+                    type="number"
+                    step="0.000001"
+                    value={geoConfig.latitude}
+                    onChange={(e) =>
+                      setGeoConfig((prev) => ({
+                        ...prev,
+                        latitude: parseFloat(e.target.value) || 0,
+                      }))
+                    }
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 font-mono text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Longitude:</label>
+                  <input
+                    type="number"
+                    step="0.000001"
+                    value={geoConfig.longitude}
+                    onChange={(e) =>
+                      setGeoConfig((prev) => ({
+                        ...prev,
+                        longitude: parseFloat(e.target.value) || 0,
+                      }))
+                    }
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 font-mono text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Slider Radius */}
+              <div className="pt-2">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="font-bold text-slate-700">Radius Jangkauan Sah:</span>
+                  <span className="px-2.5 py-0.5 rounded-lg bg-indigo-100 text-indigo-800 font-extrabold text-xs">
+                    {geoConfig.radiusMeters} Meter
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="200"
+                  max="1500"
+                  step="50"
+                  value={geoConfig.radiusMeters}
+                  onChange={(e) =>
+                    setGeoConfig((prev) => ({
+                      ...prev,
+                      radiusMeters: parseInt(e.target.value, 10),
+                    }))
+                  }
+                  className="w-full accent-indigo-600 cursor-pointer"
+                />
+
+                {/* Quick Presets */}
+                <div className="flex items-center justify-between mt-2 text-[11px] text-slate-500">
+                  <span>Pilihan Cepat:</span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setGeoConfig((prev) => ({ ...prev, radiusMeters: 500 }))}
+                      className={`px-2 py-0.5 rounded-lg border transition cursor-pointer ${
+                        geoConfig.radiusMeters === 500
+                          ? 'bg-indigo-600 text-white border-indigo-600 font-bold'
+                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      500m
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGeoConfig((prev) => ({ ...prev, radiusMeters: 800 }))}
+                      className={`px-2 py-0.5 rounded-lg border transition cursor-pointer ${
+                        geoConfig.radiusMeters === 800
+                          ? 'bg-indigo-600 text-white border-indigo-600 font-bold'
+                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      800m (Disarankan)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGeoConfig((prev) => ({ ...prev, radiusMeters: 1000 }))}
+                      className={`px-2 py-0.5 rounded-lg border transition cursor-pointer ${
+                        geoConfig.radiusMeters === 1000
+                          ? 'bg-indigo-600 text-white border-indigo-600 font-bold'
+                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      1000m
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Edukasi / Petunjuk */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl text-[11px] leading-relaxed text-slate-600 space-y-1">
+                <span className="font-bold text-slate-800 block">Catatan Keabsahan:</span>
+                <p>
+                  Siswa dan guru <b>tidak harus berdiri di karpet mushola atau tengah lapangan</b>. Seluruh area madrasah (Kantor Guru, Ruang Kelas X/XI/XII, Laboratorium, dan Gedung SBSN) otomatis diakui sah jika berada di dalam radius ini.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setGeofenceModalOpen(false)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 cursor-pointer"
+              >
+                Tutup
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveGeofence}
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs cursor-pointer flex items-center gap-1.5"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>Simpan Pengaturan Geofence</span>
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 };

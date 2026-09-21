@@ -17,10 +17,13 @@ import {
   renderBeRealDualCanvas,
   playCameraShutterSound,
   BeRealRenderOptions,
+  getObjectTranslation,
 } from '../services/aiDetector';
 import {
   getCurrentPosition,
   checkGeofence,
+  getGeofenceConfig,
+  saveGeofenceConfig,
 } from '../services/geoService';
 import { submitAttendanceRecord } from '../services/supabaseService';
 import { BypassModal } from './BypassModal';
@@ -81,9 +84,9 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
   });
 
   // 4. GPS & Geofencing State
-  const [gpsLoading, setGpsLoading] = useState<boolean>(false);
+  const [gpsLoading, setGpsLoading] = useState<boolean>(true);
   const [gpsInside, setGpsInside] = useState<boolean>(true);
-  const [gpsDistance, setGpsDistance] = useState<number>(35);
+  const [gpsDistance, setGpsDistance] = useState<number | null>(null);
   const [gpsCoords, setGpsCoords] = useState<{ latitude: number; longitude: number } | undefined>();
 
   // 5. Modals & Submission State
@@ -92,7 +95,8 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [submitSuccessMsg, setSubmitSuccessMsg] = useState<string | null>(null);
 
-  // 6. Dual Capture State
+  // 6. Dual vs Instant Capture State
+  const [captureMode, setCaptureMode] = useState<'instant' | 'bereal'>('instant');
   const [isBeRealCapturing, setIsBeRealCapturing] = useState<boolean>(false);
   const [beRealStepMsg, setBeRealStepMsg] = useState<string>('');
   const [countdownSec, setCountdownSec] = useState<number | null>(null);
@@ -102,6 +106,12 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
   const frame1CanvasRef = useRef<HTMLCanvasElement | null>(null);
   const frame2CanvasRef = useRef<HTMLCanvasElement | null>(null);
   const beRealOptionsRef = useRef<BeRealRenderOptions | null>(null);
+
+  const latestDetectionRef = useRef<DetectionResult>({
+    hasPerson: false,
+    score: 0,
+    allPredictions: [],
+  });
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -130,7 +140,11 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
     setGpsLoading(true);
     try {
       const pos = await getCurrentPosition();
-      const check = checkGeofence({ latitude: pos.latitude, longitude: pos.longitude });
+      const check = checkGeofence({
+        latitude: pos.latitude,
+        longitude: pos.longitude,
+        accuracy: pos.accuracy,
+      });
       setGpsInside(check.isInside);
       setGpsDistance(check.distanceMeters);
       setGpsCoords({ latitude: pos.latitude, longitude: pos.longitude });
@@ -223,7 +237,9 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
   useEffect(() => {
     let isRunning = true;
     let isDetecting = false;
-    const runLoop = async () => {
+    let lastDetectionTime = 0;
+
+    const runLoop = async (timestamp: number) => {
       if (!isRunning) return;
       if (
         videoRef.current &&
@@ -239,24 +255,32 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
 
         const isUserMode = facingMode === 'user';
 
-        if (!isDetecting) {
+        // Deteksi background dengan interval sat-set ~140ms (7-8 frame per detik)
+        // Menjamin HP tidak overheat dan video tetap mulus 60 FPS
+        if (!isDetecting && timestamp - lastDetectionTime > 140) {
           isDetecting = true;
-          try {
-            const result = await detectObjects(video);
-            setLatestDetection(result);
-            drawDetectionOverlay(canvas, video, result, isUserMode);
-          } catch (err) {
-            console.warn('Detection error:', err);
-          } finally {
-            isDetecting = false;
-          }
-        } else {
-          // Tetap update animasi garis laser scanner saat background detector memproses
-          drawDetectionOverlay(canvas, video, latestDetection, isUserMode);
+          lastDetectionTime = timestamp;
+          detectObjects(video)
+            .then((result) => {
+              if (isRunning) {
+                latestDetectionRef.current = result;
+                setLatestDetection(result);
+              }
+            })
+            .catch((err) => {
+              console.warn('Detection error:', err);
+            })
+            .finally(() => {
+              isDetecting = false;
+            });
         }
+
+        // Render overlay dan garis scanner secara mulus 60 FPS menggunakan data terbaru
+        drawDetectionOverlay(canvas, video, latestDetectionRef.current, isUserMode);
       }
       animationFrameRef.current = requestAnimationFrame(runLoop);
     };
+
     animationFrameRef.current = requestAnimationFrame(runLoop);
     return () => {
       isRunning = false;
@@ -264,7 +288,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [facingMode, cameraActive, latestDetection]);
+  }, [facingMode, cameraActive]);
 
   // Pengambilan foto 2 sudut BeReal (Wajah & Suasana) secara cepat dan otomatis
   const handleStartCapture = async () => {
@@ -279,21 +303,22 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
     if (!videoRef.current) return;
 
     setIsBeRealCapturing(true);
-    setBeRealStepMsg('Sudut 1: Wajah...');
+    setBeRealStepMsg('Mengambil foto presensi...');
     try {
       // 1. Shutter sound & visual flash sudut 1 (Wajah Siswa)
       playCameraShutterSound();
       setBeRealFlash(true);
       setTimeout(() => setBeRealFlash(false), 160);
 
-      // Ambil frame 1 langsung dari kamera aktif
+      // Ambil frame 1 langsung dari kamera aktif (sangat cepat < 50ms)
       const isCurrentMirrored = facingMode === 'user';
       const frame1 = captureFrameToCanvas(videoRef.current, isCurrentMirrored);
       frame1CanvasRef.current = frame1;
 
-      // 2. Ambil sudut 2 (Kamera belakang / Suasana Sholat)
-      setBeRealStepMsg('Sudut 2: Suasana...');
       let frame2: HTMLCanvasElement | null = null;
+
+      // MODE DUAL KAMERA (2 SUDUT): Wajah & Suasana Madrasah secara cepat
+      setBeRealStepMsg('Sudut 2: Suasana...');
       let switchedStream: MediaStream | null = null;
 
       try {
@@ -319,11 +344,11 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
             };
           });
 
-          // Jeda singkat 450ms untuk penyesuaian sensor
-          await new Promise((r) => setTimeout(r, 450));
+          // Jeda minimal 150ms agar sensor exposure kamera menyesuaikan secara cepat
+          await new Promise((r) => setTimeout(r, 150));
           playCameraShutterSound();
           setBeRealFlash(true);
-          setTimeout(() => setBeRealFlash(false), 160);
+          setTimeout(() => setBeRealFlash(false), 140);
           frame2 = captureFrameToCanvas(videoRef.current, targetMode === 'user');
         }
       } catch (switchErr) {
@@ -348,8 +373,8 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
         prayerType: prayerType,
         aiConfidence: latestDetection.score,
         gpsText: gpsInside
-          ? `Area Madrasah (${gpsDistance}m)`
-          : `Luar Radius (${gpsDistance}m)`,
+          ? 'Area Madrasah (Sah)'
+          : `Luar Radius (${gpsDistance ?? 0}m)`,
       };
       beRealOptionsRef.current = renderOpts;
 
@@ -384,8 +409,10 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
         status: attendanceStatus,
         ai_status: `Valid (${latestDetection.score}%)`,
         ai_confidence: latestDetection.score,
-        gps_status: gpsInside ? 'Valid (Dalam Radius)' : `Di Luar Radius (${gpsDistance}m)`,
-        gps_distance: gpsDistance,
+        gps_status: gpsInside
+          ? 'Valid (Dalam Radius)'
+          : `Di Luar Radius (${gpsDistance ?? 0}m)`,
+        gps_distance: gpsDistance ?? undefined,
         gps_coords: gpsCoords,
         snapshot_photo: finalPhoto,
         notes: autoNotes,
@@ -416,7 +443,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
         status: status,
         ai_status: `Bypass (${status})`,
         gps_status: gpsInside ? 'Valid (Dalam Radius)' : 'Di Luar Radius',
-        gps_distance: gpsDistance,
+        gps_distance: gpsDistance ?? undefined,
         gps_coords: gpsCoords,
         notes: notes,
         created_at: new Date().toISOString(),
@@ -728,6 +755,19 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
           whileHover={{ y: -2 }}
           transition={{ type: 'spring', stiffness: 400, damping: 20 }}
         >
+          {/* Header Kontrol Kamera */}
+          <div className="flex items-center justify-between gap-2 pb-1">
+            <div className="flex items-center gap-1.5">
+              <Camera className="w-4 h-4 text-emerald-600" />
+              <span className="text-xs font-bold text-slate-800">Kamera Presensi</span>
+            </div>
+
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-bold">
+              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+              <span>Dual Kamera (2 Sudut)</span>
+            </div>
+          </div>
+
           {/* Kamera Viewport Frame */}
           <div className="relative w-full aspect-[4/3] bg-slate-950 rounded-3xl overflow-hidden border border-slate-200 shadow-inner flex items-center justify-center">
             {/* Video Stream */}
@@ -805,23 +845,38 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
 
             {/* AI Status Badge */}
             {!aiLoading && !cameraError && (
-              <div className="absolute top-3 left-3 z-10">
+              <div className="absolute top-3 left-3 z-10 flex flex-col gap-1.5 max-w-[70%]">
                 {latestDetection.hasPerson ? (
                   <motion.div
-                    className="px-3 py-1 rounded-full bg-slate-900/85 border border-emerald-500 text-emerald-300 text-xs font-bold flex items-center gap-1.5 backdrop-blur-xs shadow-xs"
+                    className="px-3 py-1 rounded-full bg-slate-900/90 border border-emerald-500 text-emerald-300 text-xs font-bold flex items-center gap-1.5 backdrop-blur-xs shadow-xs w-fit"
                     animate={{ scale: [1, 1.03, 1] }}
                     transition={{ duration: 2, repeat: Infinity }}
                   >
                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
                     <span>Siswa Terdeteksi ({latestDetection.score}%)</span>
                   </motion.div>
+                ) : latestDetection.allPredictions && latestDetection.allPredictions.length > 0 ? (
+                  (() => {
+                    const topObj = latestDetection.allPredictions[0];
+                    const trans = getObjectTranslation(topObj.class);
+                    const conf = Math.round(topObj.score * 100);
+                    return (
+                      <div className={`px-3 py-1 rounded-full backdrop-blur-xs shadow-xs flex items-center gap-1.5 text-xs font-bold w-fit border ${
+                        trans.isVehicle 
+                          ? 'bg-amber-950/90 border-amber-400 text-amber-200' 
+                          : 'bg-rose-950/90 border-rose-400 text-rose-200'
+                      }`}>
+                        <span>Terdeteksi: {trans.label} ({conf}%)</span>
+                      </div>
+                    );
+                  })()
                 ) : manualCaptureAllowed ? (
-                  <div className="px-3 py-1 rounded-full bg-slate-900/85 border border-emerald-400/80 text-emerald-300 text-xs font-bold flex items-center gap-1.5 backdrop-blur-xs shadow-xs">
+                  <div className="px-3 py-1 rounded-full bg-slate-900/85 border border-emerald-400/80 text-emerald-300 text-xs font-bold flex items-center gap-1.5 backdrop-blur-xs shadow-xs w-fit">
                     <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
                     <span>Kamera Siap Difoto</span>
                   </div>
                 ) : (
-                  <div className="px-3 py-1 rounded-full bg-slate-900/85 border border-rose-500/70 text-rose-300 text-xs font-bold flex items-center gap-1.5 backdrop-blur-xs shadow-xs">
+                  <div className="px-3 py-1 rounded-full bg-slate-900/85 border border-rose-500/70 text-rose-300 text-xs font-bold flex items-center gap-1.5 backdrop-blur-xs shadow-xs w-fit">
                     <span className="w-2 h-2 rounded-full bg-rose-500"></span>
                     <span>Arahkan ke Wajah Siswa</span>
                   </div>
@@ -845,37 +900,61 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
             </motion.button>
           </div>
 
-          {/* GPS Status Strip - Clean & Aligned */}
-          <div className="flex items-center justify-between gap-2.5 px-3.5 py-2.5 bg-slate-50 rounded-2xl border border-slate-200/90 text-xs shadow-2xs">
+          {/* GPS Status Strip - Clean & Realistic */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 px-3.5 py-2.5 bg-slate-50 rounded-2xl border border-slate-200/90 text-xs shadow-2xs">
             <div className="flex items-center gap-2 min-w-0">
               <span
                 className={`w-2.5 h-2.5 rounded-full shrink-0 ${
-                  gpsInside ? 'bg-emerald-500 ring-4 ring-emerald-100' : 'bg-rose-500 ring-4 ring-rose-100'
+                  gpsLoading && gpsDistance === null
+                    ? 'bg-amber-400 ring-4 ring-amber-100 animate-pulse'
+                    : gpsInside
+                    ? 'bg-emerald-500 ring-4 ring-emerald-100'
+                    : 'bg-rose-500 ring-4 ring-rose-100'
                 }`}
               />
               <div className="flex items-center gap-1.5 flex-wrap min-w-0">
                 <span className="font-bold text-slate-800 text-xs">
-                  {gpsInside ? 'Area Madrasah' : 'Luar Radius'}
+                  {gpsLoading && gpsDistance === null
+                    ? 'Mendeteksi Lokasi GPS...'
+                    : gpsInside
+                    ? 'Area Madrasah (Sah)'
+                    : 'Luar Radius'}
                 </span>
-                <span className="px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-600 font-mono text-[11px] font-semibold shadow-2xs">
-                  {gpsDistance} m
-                </span>
+                {gpsDistance !== null && (
+                  <span
+                    className={`px-2 py-0.5 rounded-md font-mono text-[11px] font-semibold shadow-2xs border ${
+                      gpsInside
+                        ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                        : 'bg-rose-50 border-rose-200 text-rose-800'
+                    }`}
+                    title="Jarak riil dari titik patokan gerbang madrasah di Jl. Kates"
+                  >
+                    {gpsDistance} m dari Gerbang Jl. Kates
+                  </span>
+                )}
+                {gpsInside && (
+                  <span className="text-[10px] text-emerald-700 font-medium hidden md:inline">
+                    (Dalam Radius Kampus 600m)
+                  </span>
+                )}
               </div>
             </div>
 
-            <motion.button
-              type="button"
-              id="btn-refresh-gps"
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.96 }}
-              onClick={checkGps}
-              disabled={gpsLoading}
-              className="shrink-0 px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
-              title="Perbarui koordinat GPS"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 text-emerald-600 ${gpsLoading ? 'animate-spin' : ''}`} />
-              <span>Perbarui GPS</span>
-            </motion.button>
+            <div className="flex items-center gap-1.5 self-end sm:self-auto shrink-0">
+              <motion.button
+                type="button"
+                id="btn-refresh-gps"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.96 }}
+                onClick={checkGps}
+                disabled={gpsLoading}
+                className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                title="Perbarui koordinat GPS riil perangkat"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 text-emerald-600 ${gpsLoading ? 'animate-spin' : ''}`} />
+                <span>{gpsLoading ? 'Mencari...' : 'Perbarui GPS'}</span>
+              </motion.button>
+            </div>
           </div>
 
           {/* Primary Action Button */}
@@ -903,8 +982,17 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
               ) : isPersonValid ? (
                 <>
                   <Camera className="w-4 h-4 text-white" />
-                  <span>Ambil Presensi: {studentName.trim()}</span>
+                  <span>
+                    Jepret Presensi (2 Sudut): {studentName.trim()}
+                  </span>
                 </>
+              ) : latestDetection.allPredictions && latestDetection.allPredictions.length > 0 ? (
+                (() => {
+                  const trans = getObjectTranslation(latestDetection.allPredictions[0].class);
+                  return (
+                    <span>Terdeteksi: {trans.label} (Bukan Siswa)</span>
+                  );
+                })()
               ) : (
                 <span>Arahkan Kamera ke Wajah Siswa</span>
               )}
