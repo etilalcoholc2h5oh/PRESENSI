@@ -45,6 +45,17 @@ export function getStoredConfig(): SupabaseConfig {
   const envUrl = (import.meta as any).env?.VITE_SUPABASE_URL || '';
   const envKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
 
+  // FORCE priority to environment variables if they are present
+  if (envUrl && envKey) {
+    return {
+      url: envUrl,
+      anonKey: envKey,
+      tableName: 'presensi_sholat',
+      isConnected: false,
+    };
+  }
+
+  // Fallback to local storage if environment variables are NOT set
   try {
     const saved = localStorage.getItem(CONFIG_STORAGE_KEY);
     if (saved) {
@@ -53,15 +64,6 @@ export function getStoredConfig(): SupabaseConfig {
         url: parsed.url || envUrl,
         anonKey: parsed.anonKey || envKey,
         tableName: parsed.tableName || 'presensi_sholat',
-        isConnected: false,
-      };
-    }
-
-    if (envUrl && envKey) {
-      return {
-        url: envUrl,
-        anonKey: envKey,
-        tableName: 'presensi_sholat',
         isConnected: false,
       };
     }
