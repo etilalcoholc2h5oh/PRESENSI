@@ -43,7 +43,7 @@ export function exportToExcel(records: AttendanceRecord[], filterSummary?: strin
   const ws = XLSX.utils.aoa_to_sheet([
     [`LAPORAN REKAPITULASI PRESENSI SHOLAT SISWA - ${MADRASAH_INFO.name.toUpperCase()}`],
     [`Alamat: ${MADRASAH_INFO.address}`],
-    [`Area: Mushola Sekolah & Lapangan`],
+    [`Area: Lingkungan Madrasah (Ruang Kelas & Fasilitas Madrasah)`],
     [`Periode / Filter: ${filterSummary || 'Semua Data Terarsip'} | Total Catatan: ${records.length}`],
     [`Tanggal Ekspor: ${new Date().toLocaleString('id-ID')}`],
     [],
@@ -86,7 +86,7 @@ export function exportToPdf(records: AttendanceRecord[], filterSummary?: string)
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
   doc.text(MADRASAH_INFO.address, 14, 26);
-  doc.text(`Lokasi: Mushola Sekolah & Lapangan`, 14, 30);
+  doc.text(`Lokasi: Lingkungan Madrasah (Ruang Kelas & Fasilitas Madrasah)`, 14, 30);
   doc.text(`Filter / Periode: ${filterSummary || 'Semua Data Terarsip'} | Total Data: ${records.length} Siswa`, 14, 34);
   doc.text(`Dicetak pada: ${new Date().toLocaleString('id-ID')}`, 14, 38);
 

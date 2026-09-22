@@ -471,7 +471,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           >
             <span className="text-xs font-bold text-emerald-700 block">Hadir Sah</span>
             <div className="text-2xl font-black text-emerald-600 mt-1">{stats.hadir}</div>
-            <span className="text-[11px] text-emerald-600">Dalam radius Mushola</span>
+            <span className="text-[11px] text-emerald-600">Dalam radius Madrasah</span>
           </motion.div>
 
           <motion.div

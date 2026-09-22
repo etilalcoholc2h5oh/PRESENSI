@@ -399,8 +399,8 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
       const isOutsideRadius = !gpsInside;
       const attendanceStatus: AttendanceStatus = isOutsideRadius ? 'Di Luar Radius' : 'Hadir';
       const autoNotes = isOutsideRadius
-        ? `Presensi dilakukan ${gpsDistance} meter di luar radius Mushola. Siswa terdeteksi di luar area presensi yang sah.`
-        : `Presensi sah. Siswa hadir sholat ${prayerType} berjamaah di area Madrasah.`;
+        ? `Presensi di luar radius madrasah (${gpsDistance} meter).`
+        : `Presensi sah di area radius madrasah.`;
 
       const res = await submitAttendanceRecord({
         name: currentStudent.name,

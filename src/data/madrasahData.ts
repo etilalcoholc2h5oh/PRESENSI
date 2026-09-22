@@ -7,12 +7,12 @@ export const MADRASAH_INFO = {
   address: 'Jl. Kates No. 34, Siswodipuran, Kec. Boyolali, Kabupaten Boyolali, Jawa Tengah 57311',
 };
 
-// Lokasi Kompleks MAN 1 Boyolali (Jl. Kates No. 34, Siswodipuran - Mushola, Lapangan, Kantor Guru & Seluruh Kelas)
+// Lokasi Kompleks MAN 1 Boyolali (Jl. Kates No. 34, Siswodipuran - Ruang Kelas, Mushola, & Gedung Madrasah)
 export const DEFAULT_GEOFENCE: GeofenceConfig = {
   latitude: -7.540982,
   longitude: 110.599143,
   radiusMeters: 600,
-  locationName: 'MAN 1 Boyolali (Jl. Kates No. 34 - Mushola, Kantor Guru & Kelas)',
+  locationName: 'MAN 1 Boyolali (Ruang Kelas & Fasilitas Madrasah)',
 };
 
 export const CLASSES = [
@@ -105,7 +105,7 @@ export const DEMO_ATTENDANCE_RECORDS: AttendanceRecord[] = [
     gps_distance: 22,
     gps_coords: { latitude: -7.53606, longitude: 110.59624 },
     snapshot_photo: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="320" height="240" viewBox="0 0 320 240"><rect width="320" height="240" fill="%23f1f5f9"/><circle cx="160" cy="90" r="40" fill="%23059669" opacity="0.4"/><rect x="110" y="140" width="100" height="80" rx="20" fill="%23059669" opacity="0.4"/><rect x="80" y="30" width="160" height="180" fill="none" stroke="%23059669" stroke-width="3"/><text x="85" y="55" fill="%23059669" font-size="14" font-family="sans-serif">Person: 96%</text><text x="160" y="230" fill="%23475569" font-size="12" font-family="sans-serif" text-anchor="middle">Daffa Raihan - Sholat Jumat</text></svg>',
-    notes: 'Sholat Jumat di Mushola & Lapangan MAN 1 Boyolali',
+    notes: 'Presensi sah di area radius madrasah.',
     created_at: new Date(Date.now() - 86400000 * 7).toISOString(),
   },
   {
