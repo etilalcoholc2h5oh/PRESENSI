@@ -47,6 +47,7 @@ export function getStoredConfig(): SupabaseConfig {
 
   // FORCE priority to environment variables if they are present
   if (envUrl && envKey) {
+    console.log("DETEKTIF SUPABASE: KEY DITEMUKAN");
     return {
       url: envUrl,
       anonKey: envKey,
@@ -54,6 +55,8 @@ export function getStoredConfig(): SupabaseConfig {
       isConnected: false,
     };
   }
+
+  console.log("DETEKTIF SUPABASE: KEY KOSONG");
 
   // Fallback to local storage if environment variables are NOT set
   try {
