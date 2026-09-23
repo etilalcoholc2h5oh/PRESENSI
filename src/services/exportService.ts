@@ -33,8 +33,6 @@ export function exportToExcel(records: AttendanceRecord[], filterSummary?: strin
       'Jenis Sholat': rec.prayer_type,
       'Status Kehadiran': displayStatus,
       'Deteksi AI': rec.ai_status + (rec.ai_confidence ? ` (${rec.ai_confidence}%)` : ''),
-      'Status Lokasi GPS': rec.gps_status,
-      'Jarak ke Lokasi (m)': rec.gps_distance ? `${rec.gps_distance} m` : '-',
       Keterangan: displayNotes,
       'ID Sistem': rec.id,
     };

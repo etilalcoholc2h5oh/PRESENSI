@@ -176,9 +176,6 @@ export default function App() {
             >
               <StudentPresence
                 onRecordSubmitted={loadRecords}
-                onGpsUpdate={(inside) => {
-                  setIsInsideGeofence(inside);
-                }}
               />
             </motion.div>
           )}

@@ -365,19 +365,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             />
           </motion.button>
 
-          {/* Tombol Pengaturan Lokasi & Radius Geofence Madrasah */}
-          <motion.button
-            type="button"
-            id="btn-geofence-config"
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={handleOpenGeofenceModal}
-            className="px-3.5 py-2 rounded-2xl text-xs font-bold transition shadow-xs cursor-pointer flex items-center gap-2 border bg-white hover:bg-slate-50 text-indigo-900 border-indigo-200"
-            title="Pengaturan Lokasi GPS & Radius Geofencing Madrasah"
-          >
-            <MapPin className="w-3.5 h-3.5 text-indigo-600" />
-            <span>Radius GPS ({geoConfig.radiusMeters}m)</span>
-          </motion.button>
+          {/* Placeholder for future admin tools */}
+          <div className="px-3.5 py-2 rounded-2xl text-xs font-bold transition flex items-center gap-2">
+            {/* No extra tools currently */}
+          </div>
 
           <motion.button
             type="button"
@@ -471,17 +462,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           >
             <span className="text-xs font-bold text-emerald-700 block">Hadir Sah</span>
             <div className="text-2xl font-black text-emerald-600 mt-1">{stats.hadir}</div>
-            <span className="text-[11px] text-emerald-600">Dalam radius Madrasah</span>
-          </motion.div>
-
-          <motion.div
-            className="bg-white border border-rose-200/80 p-3.5 rounded-3xl shadow-xs"
-            whileHover={{ y: -3, scale: 1.02 }}
-            transition={{ type: 'spring', stiffness: 350, damping: 20 }}
-          >
-            <span className="text-xs font-bold text-rose-700 block">Luar Radius</span>
-            <div className="text-2xl font-black text-rose-600 mt-1">{stats.luarRadius}</div>
-            <span className="text-[11px] text-rose-500 font-semibold">Tidak Sah / Verif</span>
+            <span className="text-[11px] text-emerald-600">Presensi Sah</span>
           </motion.div>
 
           <motion.div
@@ -826,59 +807,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <div className="bg-slate-50 rounded-xl p-3 border border-slate-200/80 space-y-2.5 text-xs">
                     {/* Baris Foto & AI */}
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
-                        <Camera className="w-3.5 h-3.5 text-slate-400" />
-                        Bukti AI:
-                      </span>
-                      {rec.snapshot_photo ? (
-                        <button
-                          type="button"
-                          onClick={() => setViewPhotoRecord(rec)}
-                          className="flex items-center gap-2 text-left group cursor-pointer bg-white px-2 py-1 rounded-lg border border-slate-200 shadow-2xs hover:border-emerald-300"
-                        >
-                          <img
-                            src={rec.snapshot_photo}
-                            alt="Bukti"
-                            className="w-7 h-7 rounded object-cover border border-slate-200 shrink-0"
-                          />
-                          <div className="text-right">
-                            <span className="text-[10px] text-emerald-700 font-bold block group-hover:underline">
-                              Lihat Foto
-                            </span>
-                            <span className="text-[9px] text-slate-500 font-mono block">
-                              {rec.ai_status?.includes('Dual Camera') ? 'Dual Camera' : rec.ai_status || 'Valid'}
-                            </span>
-                          </div>
-                        </button>
-                      ) : (
-                        <span className="text-slate-400 text-[11px] italic">
-                          {rec.ai_status || 'Tanpa Foto'}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Baris Lokasi GPS */}
-                    <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-200/60">
-                      <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
-                        <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                        Geofencing GPS:
-                      </span>
-                      <div className="flex items-center gap-1.5">
-                        <span
-                          className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
-                            rec.gps_status.includes('Valid')
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                              : 'bg-rose-50 text-rose-700 border-rose-200'
-                          }`}
-                        >
-                          {rec.gps_status.includes('Valid') ? 'Dalam Radius' : 'Luar Radius'}
-                        </span>
-                        {rec.gps_distance !== undefined && (
-                          <span className="text-[10px] text-slate-500 font-mono bg-white px-1.5 py-0.5 rounded border border-slate-200">
-                            {rec.gps_distance}m
-                          </span>
-                        )}
-                      </div>
                     </div>
                   </div>
 
@@ -930,7 +858,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <th className="py-4 px-4 font-bold whitespace-nowrap w-28">Sholat</th>
                   <th className="py-4 px-4 font-bold whitespace-nowrap w-36">Status</th>
                   <th className="py-4 px-4 font-bold whitespace-nowrap w-48">Bukti Foto / AI</th>
-                  <th className="py-4 px-4 font-bold whitespace-nowrap w-44">Lokasi GPS</th>
                   <th className="py-4 px-4 font-bold min-w-[160px]">Keterangan</th>
                   <th className="py-4 px-4 font-bold no-print text-right whitespace-nowrap w-24">Aksi</th>
                 </tr>
@@ -1022,29 +949,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               {rec.ai_status || 'Tanpa Foto'}
                             </span>
                           )}
-                        </td>
-
-                        {/* Lokasi GPS */}
-                        <td className="py-4 px-4 whitespace-nowrap">
-                          <div className="flex items-center gap-1.5">
-                            <MapPin
-                              className={`w-3.5 h-3.5 shrink-0 ${
-                                rec.gps_status.includes('Valid') ? 'text-emerald-600' : 'text-rose-500'
-                              }`}
-                            />
-                            <span
-                              className={`text-[11px] font-bold ${
-                                rec.gps_status.includes('Valid')
-                                  ? 'text-emerald-700'
-                                  : 'text-rose-600'
-                              }`}
-                            >
-                              {rec.gps_status.includes('Valid') ? 'Dalam Radius' : 'Luar Radius'}
-                            </span>
-                          </div>
-                          <div className="text-[10px] text-slate-400 font-mono mt-0.5 ml-5">
-                            {rec.gps_distance !== undefined ? `${rec.gps_distance} meter` : '-'}
-                          </div>
                         </td>
 
                         {/* Keterangan */}

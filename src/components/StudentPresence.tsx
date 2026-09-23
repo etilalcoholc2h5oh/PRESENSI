@@ -19,24 +19,16 @@ import {
   BeRealRenderOptions,
   getObjectTranslation,
 } from '../services/aiDetector';
-import {
-  getCurrentPosition,
-  checkGeofence,
-  getGeofenceConfig,
-  saveGeofenceConfig,
-} from '../services/geoService';
 import { submitAttendanceRecord } from '../services/supabaseService';
 import { BypassModal } from './BypassModal';
 import { BeRealPreviewModal } from './BeRealPreviewModal';
 
 interface StudentPresenceProps {
   onRecordSubmitted: () => void;
-  onGpsUpdate: (isInside: boolean, distance: number) => void;
 }
 
 export const StudentPresence: React.FC<StudentPresenceProps> = ({
   onRecordSubmitted,
-  onGpsUpdate,
 }) => {
   // 1. Identitas Siswa State
   const [selectedClass, setSelectedClass] = useState<string>(() => {
@@ -82,12 +74,6 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
     score: 0,
     allPredictions: [],
   });
-
-  // 4. GPS & Geofencing State
-  const [gpsLoading, setGpsLoading] = useState<boolean>(true);
-  const [gpsInside, setGpsInside] = useState<boolean>(true);
-  const [gpsDistance, setGpsDistance] = useState<number | null>(null);
-  const [gpsCoords, setGpsCoords] = useState<{ latitude: number; longitude: number } | undefined>();
 
   // 5. Modals & Submission State
   const [bypassModalOpen, setBypassModalOpen] = useState<boolean>(false);
@@ -135,33 +121,6 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
       }
     }
   }, [isFridayReal, studentGender, prayerType]);
-
-  const checkGps = async () => {
-    setGpsLoading(true);
-    try {
-      const pos = await getCurrentPosition();
-      const check = checkGeofence({
-        latitude: pos.latitude,
-        longitude: pos.longitude,
-        accuracy: pos.accuracy,
-      });
-      setGpsInside(check.isInside);
-      setGpsDistance(check.distanceMeters);
-      setGpsCoords({ latitude: pos.latitude, longitude: pos.longitude });
-      onGpsUpdate(check.isInside, check.distanceMeters);
-    } catch (err: any) {
-      console.warn('GPS check error:', err);
-      setGpsInside(false);
-      setGpsDistance(999);
-      onGpsUpdate(false, 999);
-    } finally {
-      setGpsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    checkGps();
-  }, []);
 
   const startCamera = async (targetFacing: 'user' | 'environment' = facingMode) => {
     try {
@@ -372,9 +331,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
         studentClass: currentStudent.class,
         prayerType: prayerType,
         aiConfidence: latestDetection.score,
-        gpsText: gpsInside
-          ? 'Area Madrasah (Sah)'
-          : `Luar Radius (${gpsDistance ?? 0}m)`,
+        gpsText: 'Presensi Sah',
       };
       beRealOptionsRef.current = renderOpts;
 
@@ -396,11 +353,8 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
     if (!currentStudent) return;
     setSubmitting(true);
     try {
-      const isOutsideRadius = !gpsInside;
-      const attendanceStatus: AttendanceStatus = isOutsideRadius ? 'Di Luar Radius' : 'Hadir';
-      const autoNotes = isOutsideRadius
-        ? `Presensi di luar radius madrasah (${gpsDistance} meter).`
-        : `Presensi sah di area radius madrasah.`;
+      const attendanceStatus: AttendanceStatus = 'Hadir';
+      const autoNotes = `Presensi sah di area madrasah.`;
 
       const res = await submitAttendanceRecord({
         name: currentStudent.name,
@@ -409,11 +363,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
         status: attendanceStatus,
         ai_status: `Valid (${latestDetection.score}%)`,
         ai_confidence: latestDetection.score,
-        gps_status: gpsInside
-          ? 'Valid (Dalam Radius)'
-          : `Di Luar Radius (${gpsDistance ?? 0}m)`,
-        gps_distance: gpsDistance ?? undefined,
-        gps_coords: gpsCoords,
+        gps_status: 'Valid',
         snapshot_photo: finalPhoto,
         notes: autoNotes,
         created_at: new Date().toISOString(),
@@ -442,9 +392,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
         prayer_type: prayerType,
         status: status,
         ai_status: `Bypass (${status})`,
-        gps_status: gpsInside ? 'Valid (Dalam Radius)' : 'Di Luar Radius',
-        gps_distance: gpsDistance ?? undefined,
-        gps_coords: gpsCoords,
+        gps_status: 'Valid',
         notes: notes,
         created_at: new Date().toISOString(),
       });
@@ -898,63 +846,6 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
             >
               <RefreshCw className="w-4 h-4 text-emerald-400" />
             </motion.button>
-          </div>
-
-          {/* GPS Status Strip - Clean & Realistic */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 px-3.5 py-2.5 bg-slate-50 rounded-2xl border border-slate-200/90 text-xs shadow-2xs">
-            <div className="flex items-center gap-2 min-w-0">
-              <span
-                className={`w-2.5 h-2.5 rounded-full shrink-0 ${
-                  gpsLoading && gpsDistance === null
-                    ? 'bg-amber-400 ring-4 ring-amber-100 animate-pulse'
-                    : gpsInside
-                    ? 'bg-emerald-500 ring-4 ring-emerald-100'
-                    : 'bg-rose-500 ring-4 ring-rose-100'
-                }`}
-              />
-              <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-                <span className="font-bold text-slate-800 text-xs">
-                  {gpsLoading && gpsDistance === null
-                    ? 'Mendeteksi Lokasi GPS...'
-                    : gpsInside
-                    ? 'Area Madrasah (Sah)'
-                    : 'Luar Radius'}
-                </span>
-                {gpsDistance !== null && (
-                  <span
-                    className={`px-2 py-0.5 rounded-md font-mono text-[11px] font-semibold shadow-2xs border ${
-                      gpsInside
-                        ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                        : 'bg-rose-50 border-rose-200 text-rose-800'
-                    }`}
-                    title="Jarak riil dari titik patokan gerbang madrasah di Jl. Kates"
-                  >
-                    {gpsDistance} m dari Gerbang Jl. Kates
-                  </span>
-                )}
-                {gpsInside && (
-                  <span className="text-[10px] text-emerald-700 font-medium hidden md:inline">
-                    (Dalam Radius Kampus 600m)
-                  </span>
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-1.5 self-end sm:self-auto shrink-0">
-              <motion.button
-                type="button"
-                id="btn-refresh-gps"
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.96 }}
-                onClick={checkGps}
-                disabled={gpsLoading}
-                className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                title="Perbarui koordinat GPS riil perangkat"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 text-emerald-600 ${gpsLoading ? 'animate-spin' : ''}`} />
-                <span>{gpsLoading ? 'Mencari...' : 'Perbarui GPS'}</span>
-              </motion.button>
-            </div>
           </div>
 
           {/* Primary Action Button */}

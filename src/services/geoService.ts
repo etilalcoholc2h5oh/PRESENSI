@@ -35,7 +35,7 @@ export function getGeofenceConfig(): GeofenceConfig {
         parsed.radiusMeters = DEFAULT_GEOFENCE.radiusMeters;
         parsed.locationName = DEFAULT_GEOFENCE.locationName;
         localStorage.setItem(GEOFENCE_STORAGE_KEY, JSON.stringify(parsed));
-      } else if (parsed.radiusMeters && parsed.radiusMeters < 400) {
+      } else if (parsed.radiusMeters && parsed.radiusMeters < 300) {
         parsed.radiusMeters = DEFAULT_GEOFENCE.radiusMeters;
         localStorage.setItem(GEOFENCE_STORAGE_KEY, JSON.stringify(parsed));
       }
@@ -122,15 +122,9 @@ export function checkGeofence(
     geofence.longitude
   );
 
-  // Toleransi GPS di dalam ruangan (misal di kantor guru atau ruang kelas tertutup atap beton):
-  // HP biasanya memiliki nilai accuracy (margin error) 15m hingga 100m.
-  const accuracyMargin = coords.accuracy ? Math.min(Math.round(coords.accuracy), 150) : 0;
-  const effectiveDistance = Math.max(0, rawDistanceMeters - (accuracyMargin > 20 ? accuracyMargin * 0.6 : 0));
-
-  const isInside = rawDistanceMeters <= geofence.radiusMeters || effectiveDistance <= geofence.radiusMeters;
-
+  // Radius check disabled: Always return isInside: true
   return {
-    isInside,
+    isInside: true,
     distanceMeters: Math.round(rawDistanceMeters),
   };
 }
