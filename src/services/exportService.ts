@@ -109,14 +109,13 @@ export function exportToPdf(records: AttendanceRecord[], filterSummary?: string)
       rec.prayer_type,
       displayStatus,
       rec.ai_status + (rec.ai_confidence ? ` (${rec.ai_confidence}%)` : ''),
-      rec.gps_status + (rec.gps_distance ? ` (${rec.gps_distance}m)` : ''),
       displayNotes,
     ];
   });
 
   autoTable(doc, {
     startY: 43,
-    head: [['No', 'Waktu', 'Nama Siswa', 'Kelas', 'Sholat', 'Status', 'Verifikasi AI', 'Lokasi GPS', 'Keterangan']],
+    head: [['No', 'Waktu', 'Nama Siswa', 'Kelas', 'Sholat', 'Status', 'Verifikasi AI', 'Keterangan']],
     body: tableData,
     theme: 'grid',
     headStyles: { fillColor: [5, 150, 105], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
@@ -129,12 +128,11 @@ export function exportToPdf(records: AttendanceRecord[], filterSummary?: string)
       3: { cellWidth: 18 },
       4: { cellWidth: 22 },
       5: { cellWidth: 26 },
-      6: { cellWidth: 36 },
-      7: { cellWidth: 36 },
-      8: { cellWidth: 'auto' },
+      6: { cellWidth: 40 },
+      7: { cellWidth: 'auto' },
     },
     margin: { left: 14, right: 14 },
-    foot: [['', '', `Total Presensi: ${records.length}`, '', '', '', '', '', '']],
+    foot: [['', '', `Total Presensi: ${records.length}`, '', '', '', '', '']],
     footStyles: { fillColor: [241, 245, 249], textColor: [30, 41, 59], fontStyle: 'bold' },
   });
 

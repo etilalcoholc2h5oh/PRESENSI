@@ -236,9 +236,6 @@ export async function submitAttendanceRecord(record: Omit<AttendanceRecord, 'id'
         status: record.status,
         ai_status: record.ai_status,
         ai_confidence: record.ai_confidence || null,
-        gps_status: record.gps_status,
-        gps_distance: record.gps_distance ? Math.round(record.gps_distance) : null,
-        gps_coords: record.gps_coords || null,
         snapshot_photo: record.snapshot_photo || null,
         notes: record.notes || null,
       };
