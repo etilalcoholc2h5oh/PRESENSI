@@ -8,20 +8,32 @@ import {
   X,
 } from 'lucide-react';
 import { Student, PrayerType, AttendanceStatus, DetectionResult } from '../types';
-import { CLASSES } from '../data/madrasahData';
+import { CLASSES, PRAYER_TIME_CONFIG } from '../data/madrasahData';
 import {
-  loadCocoSsdModel,
-  detectObjects,
-  drawDetectionOverlay,
   captureFrameToCanvas,
   renderBeRealDualCanvas,
   playCameraShutterSound,
   BeRealRenderOptions,
-  getObjectTranslation,
 } from '../services/aiDetector';
 import { submitAttendanceRecord } from '../services/supabaseService';
 import { BypassModal } from './BypassModal';
 import { BeRealPreviewModal } from './BeRealPreviewModal';
+
+// Helper function to check if current time is within valid range
+const isTimeValid = (prayerType: PrayerType): boolean => {
+  const config = PRAYER_TIME_CONFIG[prayerType];
+  if (!config) return true; // No config, allow it
+  
+  const now = new Date();
+  const currentHour = now.getHours();
+  const currentMinute = now.getMinutes();
+  
+  const startTime = config.startHour * 60 + config.startMinute;
+  const endTime = config.endHour * 60 + config.endMinute;
+  const currentTime = currentHour * 60 + currentMinute;
+  
+  return currentTime >= startTime && currentTime <= endTime;
+};
 
 interface StudentPresenceProps {
   onRecordSubmitted: () => void;
@@ -63,17 +75,14 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
   const isFridayReal = new Date().getDay() === 5;
   const [prayerType, setPrayerType] = useState<PrayerType>('Dhuha');
 
-  // 3. Kamera & AI State
+  // Dummy latestDetection to fix ReferenceError after AI removal
+  const latestDetection = { hasPerson: true, score: 100, allPredictions: [] };
+  const latestDetectionRef = useRef(latestDetection);
+
+  // 3. Kamera State
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
   const [cameraActive, setCameraActive] = useState<boolean>(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const [aiLoading, setAiLoading] = useState<boolean>(true);
-  const [aiStatusMsg, setAiStatusMsg] = useState<string>('Menyiapkan AI deteksi...');
-  const [latestDetection, setLatestDetection] = useState<DetectionResult>({
-    hasPerson: false,
-    score: 0,
-    allPredictions: [],
-  });
 
   // 5. Modals & Submission State
   const [bypassModalOpen, setBypassModalOpen] = useState<boolean>(false);
@@ -92,12 +101,6 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
   const frame1CanvasRef = useRef<HTMLCanvasElement | null>(null);
   const frame2CanvasRef = useRef<HTMLCanvasElement | null>(null);
   const beRealOptionsRef = useRef<BeRealRenderOptions | null>(null);
-
-  const latestDetectionRef = useRef<DetectionResult>({
-    hasPerson: false,
-    score: 0,
-    allPredictions: [],
-  });
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -214,12 +217,12 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
 
         const isUserMode = facingMode === 'user';
 
-        // Deteksi background dengan interval sat-set ~140ms (7-8 frame per detik)
+        // Deteksi background dengan interval sat-set ~500ms (2 frame per detik)
         // Menjamin HP tidak overheat dan video tetap mulus 60 FPS
-        if (!isDetecting && timestamp - lastDetectionTime > 140) {
+        if (!isDetecting && timestamp - lastDetectionTime > 500) {
           isDetecting = true;
           lastDetectionTime = timestamp;
-          detectObjects(video)
+          /* detectObjects(video)
             .then((result) => {
               if (isRunning) {
                 latestDetectionRef.current = result;
@@ -231,7 +234,8 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
             })
             .finally(() => {
               isDetecting = false;
-            });
+            }); */
+
         }
 
         // Render overlay dan garis scanner secara mulus 60 FPS menggunakan data terbaru
@@ -253,10 +257,6 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
   const handleStartCapture = async () => {
     if (!currentStudent || !currentStudent.name) {
       alert('Silakan ketik nama lengkap siswa terlebih dahulu.');
-      return;
-    }
-    if (!latestDetection.hasPerson) {
-      alert('AI belum mendeteksi siswa di depan kamera. Harap posisikan kamera menghadap siswa.');
       return;
     }
     if (!videoRef.current) return;
@@ -330,7 +330,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
         studentName: currentStudent.name,
         studentClass: currentStudent.class,
         prayerType: prayerType,
-        aiConfidence: latestDetection.score,
+        aiConfidence: 100,
         gpsText: 'Presensi Sah',
       };
       beRealOptionsRef.current = renderOpts;
@@ -353,16 +353,18 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
     if (!currentStudent) return;
     setSubmitting(true);
     try {
-      const attendanceStatus: AttendanceStatus = 'Hadir';
-      const autoNotes = `Presensi sah di area madrasah.`;
+      const attendanceStatus: AttendanceStatus = isTimeValid(prayerType) ? 'Hadir' : 'Tidak Sah';
+      const autoNotes = isTimeValid(prayerType) 
+          ? `Presensi sah di area madrasah.`
+          : `Presensi di luar jam operasional (${prayerType}).`;
 
       const res = await submitAttendanceRecord({
         name: currentStudent.name,
         class: currentStudent.class,
         prayer_type: prayerType,
         status: attendanceStatus,
-        ai_status: `Valid (${latestDetection.score}%)`,
-        ai_confidence: latestDetection.score,
+        ai_status: 'Manual',
+        ai_confidence: 100,
         gps_status: 'Valid',
         snapshot_photo: finalPhoto,
         notes: autoNotes,

@@ -24,6 +24,11 @@ export const CLASSES = [
   'XII A', 'XII B', 'XII C', 'XII D', 'XII E', 'XII F', 'XII G', 'XII H', 'XII I', 'XII J',
 ];
 
+export const PRAYER_TIME_CONFIG: Record<string, { startHour: number; startMinute: number; endHour: number; endMinute: number }> = {
+  'Dhuha': { startHour: 6, startMinute: 55, endHour: 7, endMinute: 15 },
+  'Dzuhur': { startHour: 11, startMinute: 40, endHour: 12, endMinute: 15 },
+};
+
 export const INITIAL_STUDENTS: Student[] = [
   { id: 'S101', nisn: '0071234561', name: 'Ahmad Fauzi Rahman', class: 'X A', gender: 'L' },
   { id: 'S102', nisn: '0071234562', name: 'Aisyah Putri Azzahra', class: 'X A', gender: 'P' },
