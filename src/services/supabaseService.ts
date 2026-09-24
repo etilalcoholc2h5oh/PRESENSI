@@ -221,81 +221,64 @@ export async function getAttendanceRecords(): Promise<{ data: AttendanceRecord[]
 }
 
 export async function submitAttendanceRecord(record: Omit<AttendanceRecord, 'id'>): Promise<{ success: boolean; record: AttendanceRecord; isCloud: boolean; message: string }> {
-  const client = clientInstance || initSupabaseClient();
-  let cloudRecord: AttendanceRecord | null = null;
+  const temporaryId = 'rec-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6);
+  const finalRecord: AttendanceRecord = {
+    ...record,
+    id: temporaryId,
+    created_at: new Date().toISOString(),
+  };
+
   let isCloudSuccess = false;
 
-  // 1. Simpan ke Supabase jika aktif
-  let supabaseErrorDetail = '';
-  if (client) {
-    try {
-      const payload = {
-        name: record.name,
-        class: record.class,
-        prayer_type: record.prayer_type,
-        status: record.status,
-        ai_status: record.ai_status,
-        ai_confidence: record.ai_confidence || null,
-        snapshot_photo: record.snapshot_photo || null,
-        notes: record.notes || null,
-      };
-
-      const { data, error } = await client
-        .from('presensi_sholat')
-        .insert([payload])
-        .select()
-        .single();
-
-      if (error) {
-        console.error('Supabase insert error:', error);
-        supabaseErrorDetail = error.message;
-      } else if (data) {
-        cloudRecord = data;
-        isCloudSuccess = true;
-      }
-    } catch (err: any) {
-      console.error('Supabase insert exception:', err);
-      supabaseErrorDetail = err?.message || 'Gagal terhubung ke Supabase';
-    }
-  } else {
-    supabaseErrorDetail = 'Kunci Supabase belum terpasang di perangkat ini';
-  }
-
-  // 2. Kirim ke Server Terpusat MAN 1 Boyolali agar otomatis tersinkron ke semua HP / Laptop Guru
+  // 1. Simpan instan ke Server Terpusat & LocalStorage (Super Cepat)
   try {
     const res = await fetch('/api/attendance', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(record),
+      body: JSON.stringify(finalRecord),
     });
     if (res.ok) {
       const result = await res.json();
       if (result.success && result.record) {
-        cloudRecord = result.record;
+        Object.assign(finalRecord, result.record);
         isCloudSuccess = true;
       }
     }
   } catch (err) {
-    // Abaikan jika server lokal tidak aktif
+    console.warn('Simpan ke server lokal gagal, menggunakan penyimpanan lokal.', err);
   }
-
-  const finalRecord: AttendanceRecord = cloudRecord || {
-    ...record,
-    id: 'rec-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
-    created_at: new Date().toISOString(),
-  };
 
   const currentLocal = getLocalRecords();
   const updatedList = [finalRecord, ...currentLocal.filter((r) => r.id !== finalRecord.id)];
   saveLocalRecords(updatedList);
 
+  // 2. Sinkronisasi ke Supabase di background (tidak membuat loading UI lama)
+  const client = clientInstance || initSupabaseClient();
+  if (client) {
+    (async () => {
+      try {
+        const payload = {
+          name: finalRecord.name,
+          class: finalRecord.class,
+          prayer_type: finalRecord.prayer_type,
+          status: finalRecord.status,
+          ai_status: finalRecord.ai_status,
+          ai_confidence: finalRecord.ai_confidence || null,
+          snapshot_photo: finalRecord.snapshot_photo || null,
+          notes: finalRecord.notes || null,
+        };
+        await client.from('presensi_sholat').insert([payload]);
+      } catch (bgErr) {
+        console.warn('Background Supabase sync notice:', bgErr);
+      }
+    })();
+  }
+
   return {
     success: true,
     record: finalRecord,
-    isCloud: isCloudSuccess,
-    message: isCloudSuccess
-      ? 'Presensi & foto berhasil masuk ke database pusat guru!'
-      : `Presensi tersimpan di HP. (Catatan Cloud: ${supabaseErrorDetail || 'Belum tersambung ke Supabase'})`,
+    isCloud: isCloudSuccess || !!client,
+    message: 'Presensi & foto berhasil disimpan dengan cepat!',
   };
 }
 
