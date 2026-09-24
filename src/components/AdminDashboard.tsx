@@ -857,7 +857,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <th className="py-4 px-4 font-bold whitespace-nowrap w-56">Siswa & Kelas</th>
                   <th className="py-4 px-4 font-bold whitespace-nowrap w-28">Sholat</th>
                   <th className="py-4 px-4 font-bold whitespace-nowrap w-36">Status</th>
-                  <th className="py-4 px-4 font-bold whitespace-nowrap w-48">Bukti Foto / AI</th>
+                  <th className="py-4 px-4 font-bold whitespace-nowrap w-48">Bukti Foto</th>
                   <th className="py-4 px-4 font-bold min-w-[160px]">Keterangan</th>
                   <th className="py-4 px-4 font-bold no-print text-right whitespace-nowrap w-24">Aksi</th>
                 </tr>
@@ -939,14 +939,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <div className="text-[11px] text-emerald-700 font-bold flex items-center gap-1 group-hover:underline">
                                   <Eye className="w-3 h-3" /> Lihat Foto
                                 </div>
-                                <div className="text-[10px] text-slate-500 font-mono truncate max-w-[110px]">
-                                  {rec.ai_confidence ? `AI: ${rec.ai_confidence}%` : rec.ai_status || 'Valid'}
-                                </div>
                               </div>
                             </button>
                           ) : (
-                            <span className="text-slate-400 text-[11px] italic bg-slate-100 px-2 py-1 rounded-md">
-                              {rec.ai_status || 'Tanpa Foto'}
+                            <span className="text-slate-400 text-[11px] italic">
+                              -
                             </span>
                           )}
                         </td>
@@ -1100,7 +1097,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </button>
             <div className="flex items-center gap-2">
               <h4 className="text-sm font-extrabold text-slate-900">
-                Bukti Foto Presensi: {viewPhotoRecord.name}
+                Bukti Foto: {viewPhotoRecord.name}
               </h4>
             </div>
             <div className="rounded-2xl overflow-hidden border border-slate-200 bg-slate-950 aspect-[3/4] max-w-[280px] mx-auto flex items-center justify-center shadow-md">
@@ -1121,16 +1118,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <span className="text-slate-500">Kelas & Sholat:</span>
                 <span className="font-bold text-emerald-700">
                   {viewPhotoRecord.class} | {viewPhotoRecord.prayer_type}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Verifikasi AI:</span>
-                <span className="font-semibold text-slate-800">{viewPhotoRecord.ai_status}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Lokasi GPS:</span>
-                <span className="font-semibold text-slate-800">
-                  {viewPhotoRecord.gps_status} ({viewPhotoRecord.gps_distance || 0}m)
                 </span>
               </div>
             </div>

@@ -75,10 +75,6 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
   const isFridayReal = new Date().getDay() === 5;
   const [prayerType, setPrayerType] = useState<PrayerType>('Dhuha');
 
-  // Dummy latestDetection to fix ReferenceError after AI removal
-  const latestDetection = { hasPerson: true, score: 100, allPredictions: [] };
-  const latestDetectionRef = useRef(latestDetection);
-
   // 3. Kamera State
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
   const [cameraActive, setCameraActive] = useState<boolean>(false);
@@ -174,21 +170,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
   useEffect(() => {
     let isMounted = true;
     const initAi = async () => {
-      try {
-        setAiLoading(true);
-        setAiStatusMsg('Memuat model AI deteksi siswa...');
-        await loadCocoSsdModel();
-        if (isMounted) {
-          setAiLoading(false);
-          setAiStatusMsg('AI Aktif');
-        }
-      } catch (err: any) {
-        console.error('AI loading error:', err);
-        if (isMounted) {
-          setAiLoading(false);
-          setAiStatusMsg('AI siap');
-        }
-      }
+      // AI removed - simplified
     };
     initAi();
     return () => {
@@ -238,8 +220,11 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
 
         }
 
-        // Render overlay dan garis scanner secara mulus 60 FPS menggunakan data terbaru
-        drawDetectionOverlay(canvas, video, latestDetectionRef.current, isUserMode);
+    // Render overlay dan garis scanner secara mulus 60 FPS
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
       }
       animationFrameRef.current = requestAnimationFrame(runLoop);
     };
@@ -412,20 +397,20 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
 
   const [manualCaptureAllowed, setManualCaptureAllowed] = useState<boolean>(false);
 
-  // Jika kamera aktif selama 3 detik tapi AI lambat membaca di HP spesifikasi rendah, aktifkan fallback tombol ambil foto
+  // Jika kamera aktif selama 3 detik, aktifkan fallback tombol ambil foto
   useEffect(() => {
     let timer: any;
-    if (cameraActive && !latestDetection.hasPerson) {
+    if (cameraActive) {
       timer = setTimeout(() => {
         setManualCaptureAllowed(true);
       }, 3500);
-    } else if (latestDetection.hasPerson) {
+    } else {
       setManualCaptureAllowed(false);
     }
     return () => clearTimeout(timer);
-  }, [cameraActive, latestDetection.hasPerson]);
+  }, [cameraActive]);
 
-  const isPersonValid = latestDetection.hasPerson || manualCaptureAllowed;
+  const isPersonValid = true; // Always valid now
   const isNameValid = studentName.trim().length >= 2;
   const isSubmitDisabled = !isNameValid || !isPersonValid || submitting;
 
@@ -769,14 +754,6 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
               </div>
             )}
 
-            {/* AI Loading State */}
-            {aiLoading && (
-              <div className="absolute inset-0 bg-slate-900/70 backdrop-blur-xs flex flex-col items-center justify-center p-6 text-center z-20">
-                <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mb-2"></div>
-                <div className="text-xs font-bold text-white">{aiStatusMsg}</div>
-              </div>
-            )}
-
             {/* Camera Error State */}
             {cameraError && (
               <div className="absolute inset-0 bg-slate-900/85 flex flex-col items-center justify-center p-6 text-center z-20">
@@ -790,47 +767,6 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
                 >
                   Akses Kamera
                 </button>
-              </div>
-            )}
-
-            {/* AI Status Badge */}
-            {!aiLoading && !cameraError && (
-              <div className="absolute top-3 left-3 z-10 flex flex-col gap-1.5 max-w-[70%]">
-                {latestDetection.hasPerson ? (
-                  <motion.div
-                    className="px-3 py-1 rounded-full bg-slate-900/90 border border-emerald-500 text-emerald-300 text-xs font-bold flex items-center gap-1.5 backdrop-blur-xs shadow-xs w-fit"
-                    animate={{ scale: [1, 1.03, 1] }}
-                    transition={{ duration: 2, repeat: Infinity }}
-                  >
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                    <span>Siswa Terdeteksi ({latestDetection.score}%)</span>
-                  </motion.div>
-                ) : latestDetection.allPredictions && latestDetection.allPredictions.length > 0 ? (
-                  (() => {
-                    const topObj = latestDetection.allPredictions[0];
-                    const trans = getObjectTranslation(topObj.class);
-                    const conf = Math.round(topObj.score * 100);
-                    return (
-                      <div className={`px-3 py-1 rounded-full backdrop-blur-xs shadow-xs flex items-center gap-1.5 text-xs font-bold w-fit border ${
-                        trans.isVehicle 
-                          ? 'bg-amber-950/90 border-amber-400 text-amber-200' 
-                          : 'bg-rose-950/90 border-rose-400 text-rose-200'
-                      }`}>
-                        <span>Terdeteksi: {trans.label} ({conf}%)</span>
-                      </div>
-                    );
-                  })()
-                ) : manualCaptureAllowed ? (
-                  <div className="px-3 py-1 rounded-full bg-slate-900/85 border border-emerald-400/80 text-emerald-300 text-xs font-bold flex items-center gap-1.5 backdrop-blur-xs shadow-xs w-fit">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-                    <span>Kamera Siap Difoto</span>
-                  </div>
-                ) : (
-                  <div className="px-3 py-1 rounded-full bg-slate-900/85 border border-rose-500/70 text-rose-300 text-xs font-bold flex items-center gap-1.5 backdrop-blur-xs shadow-xs w-fit">
-                    <span className="w-2 h-2 rounded-full bg-rose-500"></span>
-                    <span>Arahkan ke Wajah Siswa</span>
-                  </div>
-                )}
               </div>
             )}
 

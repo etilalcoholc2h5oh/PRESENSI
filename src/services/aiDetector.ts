@@ -895,9 +895,7 @@ export function renderBeRealDualCanvas(
     });
   ctx.fillStyle = '#cbd5e1';
   ctx.font = '12px "Plus Jakarta Sans", sans-serif';
-  const metaText = `Waktu: ${nowStr} | AI: ${
-    options.aiConfidence ? options.aiConfidence + '%' : 'Valid'
-  } | ${options.gpsText || 'Area Madrasah'}`;
+  const metaText = `${options.gpsText || 'Area Madrasah'} | ${nowStr}`;
   ctx.fillText(metaText, 18, footerY + 50);
 
   return canvas.toDataURL('image/jpeg', 0.72);

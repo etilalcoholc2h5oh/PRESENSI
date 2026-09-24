@@ -204,7 +204,6 @@ export default function App() {
             {new Date().getFullYear()} {MADRASAH_INFO.name} - Sistem Presensi Sholat Siswa
           </div>
           <div className="flex items-center gap-1.5 text-slate-500 font-medium">
-            <span>Didukung AI Deteksi Siswa dan Geofencing GPS</span>
           </div>
         </div>
       </footer>
