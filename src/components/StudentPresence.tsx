@@ -7,8 +7,8 @@ import {
   AlertCircle,
   X,
 } from 'lucide-react';
-import { Student, PrayerType, AttendanceStatus, DetectionResult } from '../types';
-import { CLASSES, PRAYER_TIME_CONFIG } from '../data/madrasahData';
+import { Student, PrayerType, AttendanceStatus, DetectionResult, AttendanceRecord } from '../types';
+import { CLASSES, PRAYER_TIME_CONFIG, INITIAL_STUDENTS } from '../data/madrasahData';
 import {
   captureFrameToCanvas,
   renderBeRealDualCanvas,
@@ -36,10 +36,12 @@ const isTimeValid = (prayerType: PrayerType): boolean => {
 };
 
 interface StudentPresenceProps {
+  records?: AttendanceRecord[];
   onRecordSubmitted: () => void;
 }
 
 export const StudentPresence: React.FC<StudentPresenceProps> = ({
+  records = [],
   onRecordSubmitted,
 }) => {
   // 1. Identitas Siswa State
@@ -52,6 +54,8 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
   const [studentGender, setStudentGender] = useState<'L' | 'P'>(() => {
     return (localStorage.getItem('man1_last_student_gender') as 'L' | 'P') || 'L';
   });
+
+  const classStudents = INITIAL_STUDENTS.filter((s) => s.class === selectedClass);
 
   const currentStudent: Student = {
     id: 'stu-' + (studentName.trim().toLowerCase().replace(/\s+/g, '-') || 'anon'),
@@ -85,6 +89,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
   const [bypassType, setBypassType] = useState<'Halangan' | 'SakitIzin'>('Halangan');
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [submitSuccessMsg, setSubmitSuccessMsg] = useState<string | null>(null);
+  const [submitErrorMsg, setSubmitErrorMsg] = useState<string | null>(null);
 
   // 6. Dual vs Instant Capture State
   const [captureMode, setCaptureMode] = useState<'instant' | 'bereal'>('instant');
@@ -363,7 +368,8 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
         setSubmitSuccessMsg(null);
       }, 5000);
     } catch (err: any) {
-      alert('Gagal mengirim presensi: ' + err.message);
+      const msg = err.message || '';
+      setSubmitErrorMsg(msg.includes('409') ? 'Anda sudah melakukan presensi untuk sholat ini hari ini.' : 'Gagal mengirim presensi: ' + msg);
     } finally {
       setSubmitting(false);
     }
@@ -389,7 +395,8 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
         setSubmitSuccessMsg(null);
       }, 5000);
     } catch (err: any) {
-      alert('Gagal mengirim data: ' + err.message);
+      const msg = err.message || '';
+      setSubmitErrorMsg(msg.includes('409') ? 'Anda sudah melakukan presensi untuk sholat ini hari ini.' : 'Gagal mengirim data: ' + msg);
     } finally {
       setSubmitting(false);
     }
@@ -412,7 +419,17 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
 
   const isPersonValid = true; // Always valid now
   const isNameValid = studentName.trim().length >= 2;
-  const isSubmitDisabled = !isNameValid || !isPersonValid || submitting;
+
+  const todayStrISO = new Date().toISOString().split('T')[0];
+  const hasAlreadySubmittedToday = records.some((r) => {
+    const recordDate = new Date(r.created_at).toISOString().split('T')[0];
+    const isSameName = (r.name || '').trim().toLowerCase() === studentName.trim().toLowerCase();
+    const isSameClass = (r.class || '').trim().toLowerCase() === selectedClass.trim().toLowerCase();
+    const isSamePrayer = r.prayer_type === prayerType;
+    return isSameName && isSameClass && isSamePrayer && recordDate === todayStrISO;
+  });
+
+  const isSubmitDisabled = !isNameValid || !isPersonValid || submitting || hasAlreadySubmittedToday;
 
   const todayStr = new Date().toLocaleDateString('id-ID', {
     weekday: 'long',
@@ -450,35 +467,55 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
         </div>
       </motion.div>
 
-      {/* Success Notification Banner (Tanpa tombol pintas, otomatis tercatat ke guru) */}
-      <AnimatePresence>
-        {submitSuccessMsg && (
+      {/* Success Modal */}
+      {submitSuccessMsg && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: -10 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: -10 }}
-            className="p-4 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs sm:text-sm flex items-center justify-between gap-3 shadow-sm"
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-3xl p-6 shadow-xl max-w-sm w-full text-center space-y-4"
           >
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
-                <CheckCircle2 className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="font-bold text-emerald-900">Alhamdulillah! Presensi Berhasil</div>
-                <div className="text-xs text-emerald-700">{submitSuccessMsg}</div>
-              </div>
+            <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto">
+               <CheckCircle2 className="w-8 h-8" />
             </div>
-
+            <div>
+              <h3 className="font-bold text-lg text-slate-900">Presensi Berhasil Terkirim</h3>
+              <p className="text-slate-600 text-sm mt-1">{submitSuccessMsg}</p>
+            </div>
             <button
-              type="button"
               onClick={() => setSubmitSuccessMsg(null)}
-              className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-emerald-100/50 transition cursor-pointer"
+              className="w-full py-3 bg-emerald-600 text-white font-bold rounded-2xl cursor-pointer hover:bg-emerald-700 transition"
             >
-              <X className="w-4 h-4" />
+              Tutup
             </button>
           </motion.div>
-        )}
-      </AnimatePresence>
+        </div>
+      )}
+
+      {/* Error Modal */}
+      {submitErrorMsg && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-3xl p-6 shadow-xl max-w-sm w-full text-center space-y-4"
+          >
+            <div className="w-16 h-16 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mx-auto">
+               <AlertCircle className="w-8 h-8" />
+            </div>
+            <div>
+              <h3 className="font-bold text-lg text-slate-900">Perhatian</h3>
+              <p className="text-slate-600 text-sm mt-1">{submitErrorMsg}</p>
+            </div>
+            <button
+              onClick={() => setSubmitErrorMsg(null)}
+              className="w-full py-3 bg-slate-800 text-white font-bold rounded-2xl cursor-pointer hover:bg-slate-900 transition"
+            >
+              Tutup
+            </button>
+          </motion.div>
+        </div>
+      )}
 
       {/* Main 2-Column Responsive Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
@@ -520,22 +557,38 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
 
               {/* Nama Siswa */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Nama Lengkap Siswa:
-                </label>
-                <div>
-                  <input
-                    type="text"
-                    id="input-nama-siswa"
-                    value={studentName}
-                    onChange={(e) => setStudentName(e.target.value)}
-                    placeholder="Ketik nama lengkap Anda..."
-                    className="w-full bg-slate-50 hover:bg-white border border-slate-300 rounded-2xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 placeholder-slate-400 font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none transition"
-                  />
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-slate-700">
+                    Nama Lengkap Siswa:
+                  </label>
                 </div>
+
+                <div>
+                  <select
+                    id="select-nama-siswa"
+                    value={studentName}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setStudentName(val);
+                      const found = classStudents.find((s) => s.name === val);
+                      if (found) {
+                        setStudentGender(found.gender);
+                      }
+                    }}
+                    className="w-full bg-slate-50 hover:bg-white border border-slate-300 rounded-2xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none transition cursor-pointer"
+                  >
+                    <option value="">-- Pilih Nama Siswa Kelas {selectedClass} --</option>
+                    {classStudents.map((stu) => (
+                      <option key={stu.id} value={stu.name}>
+                        {stu.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 {!isNameValid && (
                   <p className="text-[11px] text-amber-600 mt-1 font-medium">
-                    Ketik nama lengkap untuk mengaktifkan tombol foto
+                    Pilih nama lengkap dari daftar untuk mengaktifkan tombol foto
                   </p>
                 )}
               </div>
@@ -787,7 +840,14 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
           </div>
 
           {/* Primary Action Button */}
-          <div>
+          <div className="space-y-3">
+            {hasAlreadySubmittedToday && (
+              <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>Pemberitahuan Terkirim: Anda sudah melakukan presensi untuk sholat {prayerType} hari ini. Absensi tidak dapat dilakukan dua kali.</span>
+              </div>
+            )}
+
             <motion.button
               type="button"
               id="btn-jebret-bereal"
@@ -801,29 +861,22 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
                   : 'bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-emerald-600/20'
               }`}
             >
-              {isBeRealCapturing ? (
+              {hasAlreadySubmittedToday ? (
+                <span>Presensi Telah Tercatat Sebelumnya</span>
+              ) : isBeRealCapturing ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />
                   <span>Mengambil foto presensi...</span>
                 </>
               ) : !isNameValid ? (
-                <span>Ketik Nama Siswa Terlebih Dahulu</span>
-              ) : isPersonValid ? (
+                <span>Pilih Nama Siswa Terlebih Dahulu</span>
+              ) : (
                 <>
                   <Camera className="w-4 h-4 text-white" />
                   <span>
                     Jepret Presensi (2 Sudut): {studentName.trim()}
                   </span>
                 </>
-              ) : latestDetection.allPredictions && latestDetection.allPredictions.length > 0 ? (
-                (() => {
-                  const trans = getObjectTranslation(latestDetection.allPredictions[0].class);
-                  return (
-                    <span>Terdeteksi: {trans.label} (Bukan Siswa)</span>
-                  );
-                })()
-              ) : (
-                <span>Arahkan Kamera ke Wajah Siswa</span>
               )}
             </motion.button>
           </div>

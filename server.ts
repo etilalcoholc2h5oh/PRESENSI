@@ -123,14 +123,50 @@ async function startServer() {
       return res.status(400).json({ success: false, message: 'Data presensi tidak lengkap' });
     }
 
+    // Load latest data from file to ensure accurate duplicate check
+    let currentData = [];
+    try {
+      if (fs.existsSync(DB_FILE)) {
+        const raw = fs.readFileSync(DB_FILE, 'utf-8');
+        currentData = JSON.parse(raw);
+      }
+    } catch (err) {
+      console.error('Gagal membaca database saat pengecekan duplikat:', err);
+    }
+    
     const newRecord = {
       ...body,
       id: body.id || 'rec-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
       created_at: body.created_at || new Date().toISOString(),
     };
+    
+    console.log(`[DEBUG] Database contents: ${JSON.stringify(currentData)}`);
+    console.log(`[DEBUG] Incoming record: ${newRecord.name}, ${newRecord.class}, ${newRecord.prayer_type}, ${newRecord.created_at}`);
 
-    // Add to cache and save
-    recordsCache = [newRecord, ...recordsCache.filter((r) => r.id !== newRecord.id)];
+    const newDate = new Date(newRecord.created_at).toISOString().split('T')[0];
+    const normalizedNewName = newRecord.name.trim().toLowerCase();
+    const normalizedNewClass = (newRecord.class || '').trim().toLowerCase();
+
+    const duplicate = currentData.find(r => {
+        const normalizedExistingName = (r.name || '').trim().toLowerCase();
+        const normalizedExistingClass = (r.class || '').trim().toLowerCase();
+        const existingDate = new Date(r.created_at).toISOString().split('T')[0];
+        
+        const isMatch = normalizedExistingName === normalizedNewName && 
+                        normalizedExistingClass === normalizedNewClass &&
+                        r.prayer_type === newRecord.prayer_type && 
+                        existingDate === newDate;
+        
+        if (isMatch) {
+            console.log(`[DEBUG] MATCH FOUND! Existing ID ${r.id}: '${r.name}'`);
+        } else {
+            console.log(`[DEBUG] Comparing '${normalizedExistingName}' (Class: '${normalizedExistingClass}', Date: '${existingDate}') with '${normalizedNewName}' (Class: '${normalizedNewClass}', Date: '${newDate}')`);
+        }
+        return isMatch;
+    });
+
+    // Update both cache and file
+    recordsCache = [newRecord, ...currentData.filter((r) => r.id !== newRecord.id)];
     saveDatabase();
 
     console.log(`[API] Presensi baru: ${newRecord.name} (${newRecord.class}) - ${newRecord.prayer_type}`);
@@ -165,6 +201,14 @@ async function startServer() {
     saveDatabase();
 
     return res.json({ success: true, deleted: beforeCount > recordsCache.length });
+  });
+
+  // DELETE all records
+  app.delete('/api/attendance', (req, res) => {
+    recordsCache = [];
+    saveDatabase();
+    console.log('[API] Semua data presensi berhasil dihapus');
+    return res.json({ success: true, message: 'Semua data berhasil dihapus' });
   });
 
   // Vite middleware in development

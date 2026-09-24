@@ -278,15 +278,23 @@ export async function submitAttendanceRecord(record: Omit<AttendanceRecord, 'id'
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(finalRecord),
     });
-    if (res.ok) {
-      const result = await res.json();
-      if (result.success && result.record) {
-        Object.assign(finalRecord, result.record);
-        isCloudSuccess = true;
+    
+    const result = await res.json().catch(() => ({}));
+    
+    if (!res.ok) {
+      if (res.status === 409 || result.message) {
+        throw new Error(result.message || 'Anda sudah melakukan presensi untuk sholat ini hari ini.');
       }
+      throw new Error('Gagal menyimpan presensi (Server error)');
     }
-  } catch (err) {
-    console.warn('Simpan ke server lokal gagal, menggunakan penyimpanan lokal.', err);
+
+    if (result.success && result.record) {
+      Object.assign(finalRecord, result.record);
+      isCloudSuccess = true;
+    }
+  } catch (err: any) {
+    console.warn('Simpan ke server lokal gagal atau duplikat:', err.message);
+    throw err; // Re-throw to propagate duplicate error to frontend catch block
   }
 
   const currentLocal = getLocalRecords();

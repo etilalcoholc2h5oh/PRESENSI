@@ -13,6 +13,7 @@ import {
   Copy,
   Check,
   AlertTriangle,
+  AlertCircle,
   Clock,
   MapPin,
   Camera,
@@ -20,7 +21,7 @@ import {
   User,
 } from 'lucide-react';
 import { AttendanceRecord, AttendanceStatus } from '../types';
-import { CLASSES, MADRASAH_INFO } from '../data/madrasahData';
+import { CLASSES, MADRASAH_INFO, INITIAL_STUDENTS } from '../data/madrasahData';
 import { exportToExcel, exportToPdf } from '../services/exportService';
 import {
   updateRecordStatus,
@@ -66,7 +67,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Delete Confirmation Modal State
   const [deleteConfirmRecord, setDeleteConfirmRecord] = useState<{ id: string; name: string } | null>(null);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
+  const [deleteAllConfirmOpen, setDeleteAllConfirmOpen] = useState(false);
+  const [isDeletingAll, setIsDeletingAll] = useState(false);
+  const [adminViewTab, setAdminViewTab] = useState<'records' | 'unmarked'>('records');
+  const [rekapClass, setRekapClass] = useState<string>('X A');
+  const [rekapPrayer, setRekapPrayer] = useState<string>('Dhuha');
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  const handleConfirmDeleteAll = async () => {
+    setIsDeletingAll(true);
+    try {
+      const res = await fetch('/api/attendance', { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Semua data presensi berhasil dihapus!');
+        onRefreshData();
+      } else {
+        showToast('Gagal menghapus semua data', 'error');
+      }
+    } catch (e: any) {
+      showToast('Gagal menghapus: ' + e.message, 'error');
+    } finally {
+      setIsDeletingAll(false);
+      setDeleteAllConfirmOpen(false);
+    }
+  };
 
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {
     setToastMessage({ text, type });
@@ -337,7 +362,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             Dashboard Rekapitulasi Ibadah
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Audit presensi ibadah harian siswa terverifikasi AI dan geofencing GPS
+            Audit presensi ibadah harian siswa
           </p>
         </div>
 
@@ -443,7 +468,148 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </p>
         </div>
 
-        {/* Statistics Cards */}
+        {/* Admin View Mode Tabs & Delete All Button */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 border-b border-slate-200 pb-3 no-print">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setAdminViewTab('records')}
+              className={`px-4 py-2.5 rounded-2xl text-xs font-bold transition cursor-pointer ${
+                adminViewTab === 'records'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              Tabel Riwayat & Audit Presensi
+            </button>
+            <button
+              type="button"
+              onClick={() => setAdminViewTab('unmarked')}
+              className={`px-4 py-2.5 rounded-2xl text-xs font-bold transition cursor-pointer ${
+                adminViewTab === 'unmarked'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              Siswa Belum Absen & Rekap Kelas
+            </button>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setDeleteAllConfirmOpen(true)}
+            className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold rounded-2xl text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-xs"
+          >
+            <Trash2 className="w-4 h-4 text-rose-600" />
+            <span>Hapus Semua Data</span>
+          </button>
+        </div>
+
+        {adminViewTab === 'unmarked' && (
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-6">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Rekap Kelas & Daftar Siswa Belum Absen</h3>
+                <p className="text-xs text-slate-500 mt-0.5">Pantau kehadiran harian per kelas secara real-time.</p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 mb-1">Pilih Kelas:</label>
+                  <select
+                    value={rekapClass}
+                    onChange={(e) => setRekapClass(e.target.value)}
+                    className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer"
+                  >
+                    {CLASSES.map((cls) => (
+                      <option key={cls} value={cls}>{cls}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 mb-1">Pilih Sholat:</label>
+                  <select
+                    value={rekapPrayer}
+                    onChange={(e) => setRekapPrayer(e.target.value)}
+                    className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer"
+                  >
+                    <option value="Dhuha">Dhuha</option>
+                    <option value="Dzuhur">Dzuhur</option>
+                    <option value="Sholat Jumat">Sholat Jumat</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Rekap Summary Cards */}
+            {(() => {
+              const todayStr = new Date().toDateString();
+              const classStudentsList = INITIAL_STUDENTS.filter((s) => s.class === rekapClass);
+              const checkedInToday = records.filter((r) => {
+                return (
+                  r.class === rekapClass &&
+                  r.prayer_type === rekapPrayer &&
+                  new Date(r.created_at).toDateString() === todayStr &&
+                  r.status === 'Hadir'
+                );
+              });
+
+              const checkedNamesSet = new Set(checkedInToday.map((r) => r.name.trim().toLowerCase()));
+              const uncheckedList = classStudentsList.filter((s) => !checkedNamesSet.has(s.name.trim().toLowerCase()));
+
+              return (
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                      <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Siswa Terdaftar</span>
+                      <div className="text-2xl font-black text-slate-900 mt-1">{classStudentsList.length} Siswa</div>
+                    </div>
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4">
+                      <span className="text-xs font-bold text-emerald-700 uppercase tracking-wider">Sudah Melakukan Absen</span>
+                      <div className="text-2xl font-black text-emerald-800 mt-1">{checkedNamesSet.size} Siswa</div>
+                    </div>
+                    <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4">
+                      <span className="text-xs font-bold text-rose-700 uppercase tracking-wider">Belum Absen Hari Ini</span>
+                      <div className="text-2xl font-black text-rose-800 mt-1">{uncheckedList.length} Siswa</div>
+                    </div>
+                  </div>
+
+                  {/* Daftar Siswa Belum Absen */}
+                  <div>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-rose-700 mb-3 flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 text-rose-600" />
+                      <span>Daftar Siswa Kelas {rekapClass} yang BELUM Absen ({rekapPrayer})</span>
+                    </h4>
+
+                    {uncheckedList.length === 0 ? (
+                      <div className="p-6 rounded-2xl bg-emerald-50 border border-emerald-200 text-center text-emerald-800 text-xs font-bold">
+                        🎉 Luar biasa! Seluruh siswa di kelas {rekapClass} sudah melakukan presensi {rekapPrayer} hari ini.
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                        {uncheckedList.map((stu) => (
+                          <div key={stu.id} className="p-3.5 rounded-2xl bg-rose-50/60 border border-rose-200 flex items-center justify-between">
+                            <div>
+                              <div className="text-xs font-bold text-slate-900">{stu.name}</div>
+                              <div className="text-[11px] text-slate-500 font-mono">NISN: {stu.nisn || '-'} ({stu.gender})</div>
+                            </div>
+                            <span className="px-2.5 py-1 rounded-xl bg-rose-200/60 text-rose-800 text-[10px] font-bold">
+                              Belum Absen
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
+        <div className="space-y-5">
+            {/* Statistics Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           <motion.div
             className="bg-white border border-slate-200 p-3.5 rounded-3xl shadow-xs"
@@ -1075,6 +1241,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         </div>
       </div>
+      </div>
 
       {/* MODAL VIEW SNAPSHOT PHOTO */}
       {viewPhotoRecord && (
@@ -1598,6 +1765,49 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </motion.div>
         </div>
       )}
+
+      {/* Delete All Confirmation Modal */}
+      <AnimatePresence>
+        {deleteAllConfirmOpen && (
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-white rounded-3xl max-w-md p-6 shadow-xl border border-slate-200 space-y-4 w-full"
+            >
+              <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+                <AlertCircle className="w-6 h-6" />
+              </div>
+              <div className="text-center">
+                <h3 className="text-base font-bold text-slate-900">Hapus Seluruh Data Presensi?</h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Tindakan ini akan menghapus semua riwayat presensi siswa secara permanen dari server database. Tindakan ini tidak dapat dibatalkan.
+                </p>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  disabled={isDeletingAll}
+                  onClick={() => setDeleteAllConfirmOpen(false)}
+                  className="flex-1 py-2.5 rounded-2xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeletingAll}
+                  onClick={handleConfirmDeleteAll}
+                  className="flex-1 py-2.5 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs transition cursor-pointer flex items-center justify-center gap-2"
+                >
+                  {isDeletingAll ? 'Menghapus...' : 'Ya, Hapus Semua'}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

@@ -30,16 +30,45 @@ export const PRAYER_TIME_CONFIG: Record<string, { startHour: number; startMinute
 };
 
 export const INITIAL_STUDENTS: Student[] = [
+  // Kelas X A
   { id: 'S101', nisn: '0071234561', name: 'Ahmad Fauzi Rahman', class: 'X A', gender: 'L' },
   { id: 'S102', nisn: '0071234562', name: 'Aisyah Putri Azzahra', class: 'X A', gender: 'P' },
-  { id: 'S103', nisn: '0071234563', name: 'Muhammad Rizky Pratama', class: 'X B', gender: 'L' },
-  { id: 'S104', nisn: '0071234564', name: 'Nabila Syifa Wardani', class: 'X B', gender: 'P' },
+  { id: 'S103', nisn: '0071234563', name: 'Dimas Anggara Putra', class: 'X A', gender: 'L' },
+  { id: 'S104', nisn: '0071234564', name: 'Fatimah Az-Zahra', class: 'X A', gender: 'P' },
+  { id: 'S105', nisn: '0071234565', name: 'Reza Pratama Kusuma', class: 'X A', gender: 'L' },
+  { id: 'S106', nisn: '0071234566', name: 'Zahra Salsabila', class: 'X A', gender: 'P' },
+
+  // Kelas X B
+  { id: 'S111', nisn: '0071234571', name: 'Muhammad Rizky Pratama', class: 'X B', gender: 'L' },
+  { id: 'S112', nisn: '0071234572', name: 'Nabila Syifa Wardani', class: 'X B', gender: 'P' },
+  { id: 'S113', nisn: '0071234573', name: 'Rian Hidayat', class: 'X B', gender: 'L' },
+  { id: 'S114', nisn: '0071234574', name: 'Siti Rahmawati', class: 'X B', gender: 'P' },
+  { id: 'S115', nisn: '0071234575', name: 'Yoga Saputra', class: 'X B', gender: 'L' },
+
+  // Kelas XI A
   { id: 'S201', nisn: '0061234571', name: 'Bagas Surya Nugroho', class: 'XI A', gender: 'L' },
   { id: 'S202', nisn: '0061234572', name: 'Dewi Anjani Kusuma', class: 'XI A', gender: 'P' },
-  { id: 'S203', nisn: '0061234573', name: 'Farhan Maulana Hakim', class: 'XI B', gender: 'L' },
+  { id: 'S203', nisn: '0061234573', name: 'Farhan Maulana Hakim', class: 'XI A', gender: 'L' },
+  { id: 'S204', nisn: '0061234574', name: 'Kirana Maharani', class: 'XI A', gender: 'P' },
+  { id: 'S205', nisn: '0061234575', name: 'Rafi Ahmad Fauzi', class: 'XI A', gender: 'L' },
+
+  // Kelas XI B
+  { id: 'S211', nisn: '0061234581', name: 'Abdullah Azzam Musyaffa', class: 'XI B', gender: 'L' },
+  { id: 'S212', nisn: '0061234582', name: 'Salma Aulia Rahma', class: 'XI B', gender: 'P' },
+  { id: 'S213', nisn: '0061234583', name: 'Ilham Ramadhan', class: 'XI B', gender: 'L' },
+  { id: 'S214', nisn: '0061234584', name: 'Aura Nisa Salsabila', class: 'XI B', gender: 'P' },
+
+  // Kelas XII A
   { id: 'S301', nisn: '0051234591', name: 'Daffa Raihan Al-Fatih', class: 'XII A', gender: 'L' },
   { id: 'S302', nisn: '0051234592', name: 'Fitri Handayani', class: 'XII A', gender: 'P' },
-  { id: 'S303', nisn: '0051234593', name: 'Lukman Nur Hakim', class: 'XII B', gender: 'L' },
+  { id: 'S303', nisn: '0051234593', name: 'Lukman Nur Hakim', class: 'XII A', gender: 'L' },
+  { id: 'S304', nisn: '0051234594', name: 'Tia Amalia Putri', class: 'XII A', gender: 'P' },
+  { id: 'S305', nisn: '0051234595', name: 'Zidan Al-Farisi', class: 'XII A', gender: 'L' },
+
+  // Kelas XII B
+  { id: 'S311', nisn: '0051234601', name: 'Rizki Maulana', class: 'XII B', gender: 'L' },
+  { id: 'S312', nisn: '0051234602', name: 'Salsabila Zahra', class: 'XII B', gender: 'P' },
+  { id: 'S313', nisn: '0051234603', name: 'Bintang Pratama', class: 'XII B', gender: 'L' },
 ];
 
 export const DEMO_ATTENDANCE_RECORDS: AttendanceRecord[] = [

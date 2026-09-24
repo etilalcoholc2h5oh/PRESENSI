@@ -175,6 +175,7 @@ export default function App() {
               transition={{ duration: 0.25 }}
             >
               <StudentPresence
+                records={records}
                 onRecordSubmitted={loadRecords}
               />
             </motion.div>
