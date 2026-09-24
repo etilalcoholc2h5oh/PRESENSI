@@ -239,39 +239,7 @@ export async function submitAttendanceRecord(record: Omit<AttendanceRecord, 'id'
 
   let isCloudSuccess = false;
 
-  // 1. Coba simpan ke Supabase jika aktif (dengan timeout 3 detik agar tidak macet jika koneksi putus-nyambung)
-  const client = clientInstance || initSupabaseClient();
-  if (client) {
-    try {
-      const payload = {
-        name: finalRecord.name,
-        class: finalRecord.class,
-        prayer_type: finalRecord.prayer_type,
-        status: finalRecord.status,
-        ai_status: finalRecord.ai_status,
-        ai_confidence: finalRecord.ai_confidence || null,
-        snapshot_photo: finalRecord.snapshot_photo || null,
-        notes: finalRecord.notes || null,
-      };
-
-      const supabasePromise = client.from('presensi_sholat').insert([payload]).select().single();
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase timeout')), 3000));
-
-      const res: any = await Promise.race([supabasePromise, timeoutPromise]);
-      if (res && !res.error) {
-        if (res.data) {
-          Object.assign(finalRecord, res.data);
-        }
-        isCloudSuccess = true;
-      } else if (res && res.error) {
-        console.warn('Supabase insert warning:', res.error);
-      }
-    } catch (err) {
-      console.warn('Supabase putus/lambat, beralih ke server lokal/cache:', err);
-    }
-  }
-
-  // 2. Simpan ke Server Terpusat & LocalStorage sebagai mirror & jaminan pasti masuk
+  // 1. Simpan ke Server Terpusat secara langsung dan cepat
   try {
     const res = await fetch('/api/attendance', {
       method: 'POST',
@@ -283,7 +251,7 @@ export async function submitAttendanceRecord(record: Omit<AttendanceRecord, 'id'
     
     if (!res.ok) {
       if (res.status === 409 || result.message) {
-        throw new Error(result.message || 'Anda sudah melakukan presensi untuk sholat ini hari ini.');
+        throw new Error(result.message || 'Anda sudah melakukan presensi untuk sholat ini hari ini. Absensi tidak dapat dilakukan dua kali.');
       }
       throw new Error('Gagal menyimpan presensi (Server error)');
     }
@@ -293,8 +261,29 @@ export async function submitAttendanceRecord(record: Omit<AttendanceRecord, 'id'
       isCloudSuccess = true;
     }
   } catch (err: any) {
-    console.warn('Simpan ke server lokal gagal atau duplikat:', err.message);
-    throw err; // Re-throw to propagate duplicate error to frontend catch block
+    console.warn('Simpan ke server database:', err.message);
+    throw err;
+  }
+
+  // 2. Sinkronisasi ke Supabase secara background jika dikonfigurasi (tanpa memblokir user)
+  const config = getStoredConfig();
+  if (config.isConnected) {
+    const client = clientInstance || initSupabaseClient();
+    if (client) {
+      const payload = {
+        name: finalRecord.name,
+        class: finalRecord.class,
+        prayer_type: finalRecord.prayer_type,
+        status: finalRecord.status,
+        ai_status: finalRecord.ai_status,
+        ai_confidence: finalRecord.ai_confidence || null,
+        snapshot_photo: finalRecord.snapshot_photo || null,
+        notes: finalRecord.notes || null,
+      };
+      client.from('presensi_sholat').insert([payload]).then(() => {}).catch((err) => {
+        console.warn('Supabase background sync notice:', err);
+      });
+    }
   }
 
   const currentLocal = getLocalRecords();
@@ -304,36 +293,32 @@ export async function submitAttendanceRecord(record: Omit<AttendanceRecord, 'id'
   return {
     success: true,
     record: finalRecord,
-    isCloud: isCloudSuccess || !!client,
-    message: isCloudSuccess ? 'Presensi berhasil disimpan ke Cloud & Server Guru!' : 'Presensi tersimpan di sistem.',
+    isCloud: isCloudSuccess,
+    message: 'Presensi berhasil dicatat di sistem.',
   };
 }
 
 export async function updateRecordStatus(id: string, newStatus: AttendanceRecord['status'], notes?: string): Promise<boolean> {
-  const client = clientInstance || initSupabaseClient();
-  if (client) {
-    try {
-      const updateData: any = { status: newStatus };
-      if (notes !== undefined) updateData.notes = notes;
-
-      await client
-        .from('presensi_sholat')
-        .update(updateData)
-        .eq('id', id);
-    } catch (err) {
-      console.error(err);
-    }
-  }
-
-  // Update di server database
+  // Update di server database secara cepat
   try {
-    await fetch(`/api/attendance/${encodeURIComponent(id)}`, {
+    fetch(`/api/attendance/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: newStatus, notes }),
-    });
+    }).catch(() => {});
   } catch (err) {
     console.warn('Gagal update status di server:', err);
+  }
+
+  // Background update Supabase
+  const config = getStoredConfig();
+  if (config.isConnected) {
+    const client = clientInstance || initSupabaseClient();
+    if (client) {
+      const updateData: any = { status: newStatus };
+      if (notes !== undefined) updateData.notes = notes;
+      client.from('presensi_sholat').update(updateData).eq('id', id).then(() => {}).catch(() => {});
+    }
   }
 
   const current = getLocalRecords();
@@ -348,22 +333,22 @@ export async function updateRecordStatus(id: string, newStatus: AttendanceRecord
 }
 
 export async function deleteRecord(id: string): Promise<boolean> {
-  const client = clientInstance || initSupabaseClient();
-  if (client) {
-    try {
-      await client.from('presensi_sholat').delete().eq('id', id);
-    } catch (err) {
-      console.error(err);
-    }
-  }
-
-  // Hapus di server database
+  // Hapus di server database secara cepat
   try {
-    await fetch(`/api/attendance/${encodeURIComponent(id)}`, {
+    fetch(`/api/attendance/${encodeURIComponent(id)}`, {
       method: 'DELETE',
-    });
+    }).catch(() => {});
   } catch (err) {
     console.warn('Gagal hapus data di server:', err);
+  }
+
+  // Background delete Supabase
+  const config = getStoredConfig();
+  if (config.isConnected) {
+    const client = clientInstance || initSupabaseClient();
+    if (client) {
+      client.from('presensi_sholat').delete().eq('id', id).then(() => {}).catch(() => {});
+    }
   }
 
   const current = getLocalRecords();

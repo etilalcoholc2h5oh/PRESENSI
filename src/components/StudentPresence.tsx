@@ -89,7 +89,28 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
   const [bypassType, setBypassType] = useState<'Halangan' | 'SakitIzin'>('Halangan');
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [submitSuccessMsg, setSubmitSuccessMsg] = useState<string | null>(null);
+  const [submittedRecordInfo, setSubmittedRecordInfo] = useState<{
+    name: string;
+    class: string;
+    prayer: string;
+    time: string;
+    status: string;
+  } | null>(null);
   const [submitErrorMsg, setSubmitErrorMsg] = useState<string | null>(null);
+
+  // Sync selected student with class
+  useEffect(() => {
+    const studentsInSelectedClass = INITIAL_STUDENTS.filter((s) => s.class === selectedClass);
+    const exists = studentsInSelectedClass.some((s) => s.name === studentName);
+    if (!exists) {
+      if (studentsInSelectedClass.length > 0) {
+        setStudentName(studentsInSelectedClass[0].name);
+        setStudentGender(studentsInSelectedClass[0].gender);
+      } else {
+        setStudentName('');
+      }
+    }
+  }, [selectedClass]);
 
   // 6. Dual vs Instant Capture State
   const [captureMode, setCaptureMode] = useState<'instant' | 'bereal'>('instant');
@@ -361,15 +382,19 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
         created_at: new Date().toISOString(),
       });
 
-      setSubmitSuccessMsg(res.message);
+      setSubmittedRecordInfo({
+        name: currentStudent.name,
+        class: currentStudent.class,
+        prayer: prayerType,
+        time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB',
+        status: attendanceStatus,
+      });
+      setSubmitSuccessMsg(res.message || 'Presensi Anda telah berhasil dikirim dan tercatat di sistem.');
       onRecordSubmitted();
       setBeRealModalOpen(false);
-      setTimeout(() => {
-        setSubmitSuccessMsg(null);
-      }, 5000);
     } catch (err: any) {
       const msg = err.message || '';
-      setSubmitErrorMsg(msg.includes('409') ? 'Anda sudah melakukan presensi untuk sholat ini hari ini.' : 'Gagal mengirim presensi: ' + msg);
+      setSubmitErrorMsg(msg.includes('409') || msg.includes('sudah') ? 'Anda sudah melakukan presensi untuk sholat ini hari ini.' : 'Gagal mengirim presensi: ' + msg);
     } finally {
       setSubmitting(false);
     }
@@ -389,14 +414,18 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
         notes: notes,
         created_at: new Date().toISOString(),
       });
-      setSubmitSuccessMsg(res.message);
+      setSubmittedRecordInfo({
+        name: currentStudent.name,
+        class: currentStudent.class,
+        prayer: prayerType,
+        time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB',
+        status: status,
+      });
+      setSubmitSuccessMsg(res.message || 'Data dispensasi berhasil dikirim dan tercatat.');
       onRecordSubmitted();
-      setTimeout(() => {
-        setSubmitSuccessMsg(null);
-      }, 5000);
     } catch (err: any) {
       const msg = err.message || '';
-      setSubmitErrorMsg(msg.includes('409') ? 'Anda sudah melakukan presensi untuk sholat ini hari ini.' : 'Gagal mengirim data: ' + msg);
+      setSubmitErrorMsg(msg.includes('409') || msg.includes('sudah') ? 'Anda sudah melakukan presensi untuk sholat ini hari ini.' : 'Gagal mengirim data: ' + msg);
     } finally {
       setSubmitting(false);
     }
@@ -468,54 +497,89 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
       </motion.div>
 
       {/* Success Modal */}
-      {submitSuccessMsg && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-3xl p-6 shadow-xl max-w-sm w-full text-center space-y-4"
-          >
-            <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto">
-               <CheckCircle2 className="w-8 h-8" />
-            </div>
-            <div>
-              <h3 className="font-bold text-lg text-slate-900">Presensi Berhasil Terkirim</h3>
-              <p className="text-slate-600 text-sm mt-1">{submitSuccessMsg}</p>
-            </div>
-            <button
-              onClick={() => setSubmitSuccessMsg(null)}
-              className="w-full py-3 bg-emerald-600 text-white font-bold rounded-2xl cursor-pointer hover:bg-emerald-700 transition"
+      <AnimatePresence>
+        {submitSuccessMsg && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-white rounded-3xl p-6 shadow-2xl max-w-sm w-full text-center space-y-4 border border-emerald-100"
             >
-              Tutup
-            </button>
-          </motion.div>
-        </div>
-      )}
+              <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-inner">
+                 <CheckCircle2 className="w-9 h-9" />
+              </div>
+              <div>
+                <h3 className="font-black text-xl text-slate-900">Presensi Berhasil Terkirim!</h3>
+                <p className="text-slate-600 text-xs mt-1 font-medium leading-relaxed">{submitSuccessMsg}</p>
+              </div>
+
+              {submittedRecordInfo && (
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 text-left text-xs space-y-1.5 text-slate-700 font-medium">
+                  <div className="flex justify-between items-center py-0.5 border-b border-slate-200/60">
+                    <span className="text-slate-500">Nama Siswa:</span>
+                    <span className="font-bold text-slate-900">{submittedRecordInfo.name}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-0.5 border-b border-slate-200/60">
+                    <span className="text-slate-500">Kelas:</span>
+                    <span className="font-bold text-slate-900">{submittedRecordInfo.class}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-0.5 border-b border-slate-200/60">
+                    <span className="text-slate-500">Sholat:</span>
+                    <span className="font-bold text-emerald-700">{submittedRecordInfo.prayer}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-0.5 border-b border-slate-200/60">
+                    <span className="text-slate-500">Waktu:</span>
+                    <span className="font-bold text-slate-900">{submittedRecordInfo.time}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-0.5">
+                    <span className="text-slate-500">Status:</span>
+                    <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 text-[11px]">{submittedRecordInfo.status}</span>
+                  </div>
+                </div>
+              )}
+
+              <button
+                onClick={() => {
+                  setSubmitSuccessMsg(null);
+                  setSubmittedRecordInfo(null);
+                }}
+                className="w-full py-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold rounded-2xl cursor-pointer hover:from-emerald-700 hover:to-teal-700 transition shadow-md active:scale-95"
+              >
+                Selesai
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Error Modal */}
-      {submitErrorMsg && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-3xl p-6 shadow-xl max-w-sm w-full text-center space-y-4"
-          >
-            <div className="w-16 h-16 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mx-auto">
-               <AlertCircle className="w-8 h-8" />
-            </div>
-            <div>
-              <h3 className="font-bold text-lg text-slate-900">Perhatian</h3>
-              <p className="text-slate-600 text-sm mt-1">{submitErrorMsg}</p>
-            </div>
-            <button
-              onClick={() => setSubmitErrorMsg(null)}
-              className="w-full py-3 bg-slate-800 text-white font-bold rounded-2xl cursor-pointer hover:bg-slate-900 transition"
+      <AnimatePresence>
+        {submitErrorMsg && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-white rounded-3xl p-6 shadow-2xl max-w-sm w-full text-center space-y-4 border border-rose-100"
             >
-              Tutup
-            </button>
-          </motion.div>
-        </div>
-      )}
+              <div className="w-20 h-20 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center mx-auto shadow-inner">
+                 <AlertCircle className="w-10 h-10" />
+              </div>
+              <div>
+                <h3 className="font-black text-xl text-slate-900">Perhatian</h3>
+                <p className="text-rose-700 text-sm mt-1 font-medium leading-relaxed">{submitErrorMsg}</p>
+              </div>
+              <button
+                onClick={() => setSubmitErrorMsg(null)}
+                className="w-full py-4 bg-slate-800 text-white font-bold rounded-2xl cursor-pointer hover:bg-slate-900 transition shadow-md active:scale-95"
+              >
+                Tutup
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Main 2-Column Responsive Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
@@ -844,7 +908,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
             {hasAlreadySubmittedToday && (
               <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-                <span>Pemberitahuan Terkirim: Anda sudah melakukan presensi untuk sholat {prayerType} hari ini. Absensi tidak dapat dilakukan dua kali.</span>
+                <span>Anda sudah melakukan presensi untuk sholat {prayerType} hari ini. Absensi tidak dapat dilakukan dua kali.</span>
               </div>
             )}
 
@@ -856,13 +920,18 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
               whileTap={!isSubmitDisabled && !isBeRealCapturing ? { scale: 0.97 } : {}}
               onClick={handleStartCapture}
               className={`w-full py-3.5 px-4 rounded-2xl font-bold text-sm tracking-wide transition flex items-center justify-center gap-2 shadow-sm cursor-pointer ${
-                isSubmitDisabled || isBeRealCapturing
+                hasAlreadySubmittedToday
+                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-default'
+                  : isSubmitDisabled || isBeRealCapturing
                   ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
                   : 'bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-emerald-600/20'
               }`}
             >
               {hasAlreadySubmittedToday ? (
-                <span>Presensi Telah Tercatat Sebelumnya</span>
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  <span>Presensi Berhasil Tercatat</span>
+                </div>
               ) : isBeRealCapturing ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />

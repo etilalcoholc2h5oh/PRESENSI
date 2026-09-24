@@ -584,17 +584,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                     {uncheckedList.length === 0 ? (
                       <div className="p-6 rounded-2xl bg-emerald-50 border border-emerald-200 text-center text-emerald-800 text-xs font-bold">
-                        🎉 Luar biasa! Seluruh siswa di kelas {rekapClass} sudah melakukan presensi {rekapPrayer} hari ini.
+                        Seluruh siswa di kelas {rekapClass} sudah melakukan presensi {rekapPrayer} hari ini.
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                         {uncheckedList.map((stu) => (
-                          <div key={stu.id} className="p-3.5 rounded-2xl bg-rose-50/60 border border-rose-200 flex items-center justify-between">
-                            <div>
-                              <div className="text-xs font-bold text-slate-900">{stu.name}</div>
-                              <div className="text-[11px] text-slate-500 font-mono">NISN: {stu.nisn || '-'} ({stu.gender})</div>
+                          <div key={stu.id} className="p-3.5 rounded-2xl bg-rose-50/70 border border-rose-200 flex items-center justify-between gap-2 shadow-xs hover:border-rose-300 transition">
+                            <div className="min-w-0">
+                              <div className="text-xs font-bold text-slate-900 truncate">{stu.name}</div>
+                              <div className="text-[11px] text-slate-500 font-medium">
+                                {stu.gender === 'L' ? 'Laki-laki' : 'Perempuan'}
+                              </div>
                             </div>
-                            <span className="px-2.5 py-1 rounded-xl bg-rose-200/60 text-rose-800 text-[10px] font-bold">
+                            <span className="px-2.5 py-1 rounded-xl bg-rose-200/70 text-rose-800 text-[10px] font-bold shrink-0">
                               Belum Absen
                             </span>
                           </div>
