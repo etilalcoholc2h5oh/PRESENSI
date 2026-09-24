@@ -45,37 +45,37 @@ export function getStoredConfig(): SupabaseConfig {
   const envUrl = (import.meta as any).env?.VITE_SUPABASE_URL || '';
   const envKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
 
-  // FORCE priority to environment variables if they are present
-  if (envUrl && envKey) {
-    console.log("DETEKTIF SUPABASE: KEY DITEMUKAN");
-    return {
-      url: envUrl,
-      anonKey: envKey,
-      tableName: 'presensi_sholat',
-      isConnected: false,
-    };
-  }
-
-  console.log("DETEKTIF SUPABASE: KEY KOSONG");
-
-  // Fallback to local storage if environment variables are NOT set
+  // 1. Cek local storage terlebih dahulu agar konfigurasi permanen tersimpan antar sesi
   try {
     const saved = localStorage.getItem(CONFIG_STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved);
-      return {
-        url: parsed.url || envUrl,
-        anonKey: parsed.anonKey || envKey,
-        tableName: parsed.tableName || 'presensi_sholat',
-        isConnected: false,
-      };
+      if (parsed.url && parsed.anonKey) {
+        return {
+          url: parsed.url,
+          anonKey: parsed.anonKey,
+          tableName: parsed.tableName || 'presensi_sholat',
+          isConnected: true,
+        };
+      }
     }
   } catch (e) {
     console.warn('Gagal membaca konfigurasi Supabase dari storage', e);
   }
+
+  // 2. Fallback ke Environment Variables jika ada
+  if (envUrl && envKey) {
+    return {
+      url: envUrl,
+      anonKey: envKey,
+      tableName: 'presensi_sholat',
+      isConnected: true,
+    };
+  }
+
   return {
-    url: envUrl,
-    anonKey: envKey,
+    url: '',
+    anonKey: '',
     tableName: 'presensi_sholat',
     isConnected: false,
   };
@@ -92,13 +92,22 @@ export function initSupabaseClient(url?: string, anonKey?: string): SupabaseClie
   }
 
   try {
-    clientInstance = createClient(finalUrl.trim(), finalKey.trim());
+    clientInstance = createClient(finalUrl.trim(), finalKey.trim(), {
+      auth: { persistSession: false, autoRefreshToken: false }
+    });
     return clientInstance;
   } catch (err) {
     console.error('Error inisialisasi Supabase client:', err);
     clientInstance = null;
     return null;
   }
+}
+
+// Auto-initialize client on load for permanent connection
+try {
+  clientInstance = initSupabaseClient();
+} catch (e) {
+  console.warn('Auto-init client warning:', e);
 }
 
 export async function saveSupabaseConfig(url: string, anonKey: string): Promise<{ success: boolean; message: string }> {
@@ -230,7 +239,39 @@ export async function submitAttendanceRecord(record: Omit<AttendanceRecord, 'id'
 
   let isCloudSuccess = false;
 
-  // 1. Simpan instan ke Server Terpusat & LocalStorage (Super Cepat)
+  // 1. Coba simpan ke Supabase jika aktif (dengan timeout 3 detik agar tidak macet jika koneksi putus-nyambung)
+  const client = clientInstance || initSupabaseClient();
+  if (client) {
+    try {
+      const payload = {
+        name: finalRecord.name,
+        class: finalRecord.class,
+        prayer_type: finalRecord.prayer_type,
+        status: finalRecord.status,
+        ai_status: finalRecord.ai_status,
+        ai_confidence: finalRecord.ai_confidence || null,
+        snapshot_photo: finalRecord.snapshot_photo || null,
+        notes: finalRecord.notes || null,
+      };
+
+      const supabasePromise = client.from('presensi_sholat').insert([payload]).select().single();
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase timeout')), 3000));
+
+      const res: any = await Promise.race([supabasePromise, timeoutPromise]);
+      if (res && !res.error) {
+        if (res.data) {
+          Object.assign(finalRecord, res.data);
+        }
+        isCloudSuccess = true;
+      } else if (res && res.error) {
+        console.warn('Supabase insert warning:', res.error);
+      }
+    } catch (err) {
+      console.warn('Supabase putus/lambat, beralih ke server lokal/cache:', err);
+    }
+  }
+
+  // 2. Simpan ke Server Terpusat & LocalStorage sebagai mirror & jaminan pasti masuk
   try {
     const res = await fetch('/api/attendance', {
       method: 'POST',
@@ -252,33 +293,11 @@ export async function submitAttendanceRecord(record: Omit<AttendanceRecord, 'id'
   const updatedList = [finalRecord, ...currentLocal.filter((r) => r.id !== finalRecord.id)];
   saveLocalRecords(updatedList);
 
-  // 2. Sinkronisasi ke Supabase di background (tidak membuat loading UI lama)
-  const client = clientInstance || initSupabaseClient();
-  if (client) {
-    (async () => {
-      try {
-        const payload = {
-          name: finalRecord.name,
-          class: finalRecord.class,
-          prayer_type: finalRecord.prayer_type,
-          status: finalRecord.status,
-          ai_status: finalRecord.ai_status,
-          ai_confidence: finalRecord.ai_confidence || null,
-          snapshot_photo: finalRecord.snapshot_photo || null,
-          notes: finalRecord.notes || null,
-        };
-        await client.from('presensi_sholat').insert([payload]);
-      } catch (bgErr) {
-        console.warn('Background Supabase sync notice:', bgErr);
-      }
-    })();
-  }
-
   return {
     success: true,
     record: finalRecord,
     isCloud: isCloudSuccess || !!client,
-    message: 'Presensi & foto berhasil disimpan dengan cepat!',
+    message: isCloudSuccess ? 'Presensi berhasil disimpan ke Cloud & Server Guru!' : 'Presensi tersimpan di sistem.',
   };
 }
 
