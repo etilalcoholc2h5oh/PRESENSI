@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Camera,
@@ -8,14 +8,15 @@ import {
   X,
 } from 'lucide-react';
 import { Student, PrayerType, AttendanceStatus, DetectionResult, AttendanceRecord } from '../types';
-import { CLASSES, PRAYER_TIME_CONFIG, INITIAL_STUDENTS } from '../data/madrasahData';
+import { CLASSES, PRAYER_TIME_CONFIG } from '../data/madrasahData';
+import { getStudentsByClass } from '../services/studentService';
 import {
   captureFrameToCanvas,
   renderBeRealDualCanvas,
   playCameraShutterSound,
   BeRealRenderOptions,
 } from '../services/aiDetector';
-import { submitAttendanceRecord } from '../services/supabaseService';
+import { submitAttendanceRecord } from '../services/attendanceService';
 import { BypassModal } from './BypassModal';
 import { BeRealPreviewModal } from './BeRealPreviewModal';
 
@@ -48,31 +49,86 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
   const [selectedClass, setSelectedClass] = useState<string>(() => {
     return localStorage.getItem('man1_last_class') || 'X A';
   });
+
+  const [studentsVersion, setStudentsVersion] = useState<number>(0);
+  useEffect(() => {
+    const handleUpdate = () => setStudentsVersion((v) => v + 1);
+    window.addEventListener('students_updated', handleUpdate);
+    return () => window.removeEventListener('students_updated', handleUpdate);
+  }, []);
+
+  // Selalu sinkron dan instan tanpa jeda rendering
+  const classStudents = useMemo(() => {
+    return getStudentsByClass(selectedClass);
+  }, [selectedClass, studentsVersion]);
+
   const [studentName, setStudentName] = useState<string>(() => {
-    return localStorage.getItem('man1_last_student_name') || '';
+    const lastClass = localStorage.getItem('man1_last_class') || 'X A';
+    const lastName = localStorage.getItem('man1_last_student_name') || '';
+    if (lastName) {
+      const students = getStudentsByClass(lastClass);
+      if (students.some((s) => s.name === lastName)) {
+        return lastName;
+      }
+    }
+    try {
+      localStorage.removeItem('man1_last_student_name');
+    } catch (e) {}
+    return '';
   });
+
   const [studentGender, setStudentGender] = useState<'L' | 'P'>(() => {
     return (localStorage.getItem('man1_last_student_gender') as 'L' | 'P') || 'L';
   });
 
-  const classStudents = INITIAL_STUDENTS.filter((s) => s.class === selectedClass);
+  // Validasi ketat: jika nama siswa yang terpilih tidak ada di kelas aktif, segera reset
+  useEffect(() => {
+    if (studentName) {
+      const found = classStudents.find((s) => s.name === studentName);
+      if (!found) {
+        setStudentName('');
+        try {
+          localStorage.removeItem('man1_last_student_name');
+        } catch (e) {}
+      } else if (found.gender !== studentGender) {
+        setStudentGender(found.gender);
+      }
+    }
+  }, [classStudents, studentName, studentGender]);
 
+  const foundStudent = classStudents.find((s) => s.name === studentName);
   const currentStudent: Student = {
-    id: 'stu-' + (studentName.trim().toLowerCase().replace(/\s+/g, '-') || 'anon'),
-    nisn: '',
+    id: foundStudent ? foundStudent.id : ('stu-' + (studentName.trim().toLowerCase().replace(/\s+/g, '-') || 'anon')),
+    nisn: foundStudent ? foundStudent.nisn : '',
     name: studentName.trim(),
     class: selectedClass,
     gender: studentGender,
   };
 
   useEffect(() => {
-    if (selectedClass) localStorage.setItem('man1_last_class', selectedClass);
+    if (selectedClass) {
+      try {
+        localStorage.setItem('man1_last_class', selectedClass);
+      } catch (e) {}
+    }
   }, [selectedClass]);
+
   useEffect(() => {
-    if (studentName) localStorage.setItem('man1_last_student_name', studentName);
+    try {
+      if (studentName) {
+        localStorage.setItem('man1_last_student_name', studentName);
+      } else {
+        localStorage.removeItem('man1_last_student_name');
+      }
+    } catch (e) {}
   }, [studentName]);
+
   useEffect(() => {
-    if (studentGender) localStorage.setItem('man1_last_student_gender', studentGender);
+    if (studentGender) {
+      try {
+        localStorage.setItem('man1_last_student_gender', studentGender);
+      } catch (e) {}
+    }
   }, [studentGender]);
 
   // 2. Sesi Sholat & Hari Jumat
@@ -97,20 +153,6 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
     status: string;
   } | null>(null);
   const [submitErrorMsg, setSubmitErrorMsg] = useState<string | null>(null);
-
-  // Sync selected student with class
-  useEffect(() => {
-    const studentsInSelectedClass = INITIAL_STUDENTS.filter((s) => s.class === selectedClass);
-    const exists = studentsInSelectedClass.some((s) => s.name === studentName);
-    if (!exists) {
-      if (studentsInSelectedClass.length > 0) {
-        setStudentName(studentsInSelectedClass[0].name);
-        setStudentGender(studentsInSelectedClass[0].gender);
-      } else {
-        setStudentName('');
-      }
-    }
-  }, [selectedClass]);
 
   // 6. Dual vs Instant Capture State
   const [captureMode, setCaptureMode] = useState<'instant' | 'bereal'>('instant');
@@ -608,11 +650,18 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
                 <select
                   id="select-kelas-siswa"
                   value={selectedClass}
-                  onChange={(e) => setSelectedClass(e.target.value)}
+                  onChange={(e) => {
+                    const newClass = e.target.value;
+                    setSelectedClass(newClass);
+                    setStudentName('');
+                    try {
+                      localStorage.removeItem('man1_last_student_name');
+                    } catch (err) {}
+                  }}
                   className="w-full bg-slate-50 hover:bg-white border border-slate-300 rounded-2xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none transition cursor-pointer"
                 >
                   {CLASSES.map((cls) => (
-                    <option key={cls} value={cls}>
+                    <option key={`pres-cls-${cls}`} value={cls}>
                       {cls}
                     </option>
                   ))}
@@ -622,8 +671,11 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
               {/* Nama Siswa */}
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="block text-xs font-bold text-slate-700">
-                    Nama Lengkap Siswa:
+                  <label className="block text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <span>Nama Lengkap Siswa:</span>
+                    <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                      {classStudents.length} Siswa
+                    </span>
                   </label>
                 </div>
 
@@ -641,10 +693,10 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
                     }}
                     className="w-full bg-slate-50 hover:bg-white border border-slate-300 rounded-2xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none transition cursor-pointer"
                   >
-                    <option value="">-- Pilih Nama Siswa Kelas {selectedClass} --</option>
-                    {classStudents.map((stu) => (
-                      <option key={stu.id} value={stu.name}>
-                        {stu.name}
+                    <option value="">-- Pilih Nama Siswa ({classStudents.length} Siswa) --</option>
+                    {classStudents.map((stu, index) => (
+                      <option key={`pres-stu-${stu.class}-${stu.id}-${index}`} value={stu.name}>
+                        {stu.name} ({stu.gender === 'L' ? 'L' : 'P'})
                       </option>
                     ))}
                   </select>

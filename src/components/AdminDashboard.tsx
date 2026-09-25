@@ -21,12 +21,16 @@ import {
   User,
 } from 'lucide-react';
 import { AttendanceRecord, AttendanceStatus } from '../types';
-import { CLASSES, MADRASAH_INFO, INITIAL_STUDENTS } from '../data/madrasahData';
+import { CLASSES, MADRASAH_INFO } from '../data/madrasahData';
+import {
+  getStudentsByClass,
+} from '../services/studentService';
 import { exportToExcel, exportToPdf } from '../services/exportService';
 import {
   updateRecordStatus,
   deleteRecord,
-} from '../services/supabaseService';
+  deleteAllAttendanceRecords,
+} from '../services/attendanceService';
 import {
   getGeofenceConfig,
   saveGeofenceConfig,
@@ -74,9 +78,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleConfirmDeleteAll = async () => {
     setIsDeletingAll(true);
     try {
-      const res = await fetch('/api/attendance', { method: 'DELETE' });
-      const data = await res.json();
-      if (data.success) {
+      const success = await deleteAllAttendanceRecords();
+      if (success) {
         showToast('Semua data presensi berhasil dihapus!');
         onRefreshData();
       } else {
@@ -325,7 +328,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </p>
         </div>
 
-        {/* Buttons: Export Excel, Print PDF, Refresh, Supabase Cloud */}
+        {/* Buttons: Export Excel, Print PDF, Refresh, Cloud Sync */}
         <div className="no-print flex items-center flex-wrap gap-2">
           <motion.button
             type="button"
@@ -378,7 +381,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {/* Admin View Mode Tabs & Delete All Button */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 border-b border-slate-200 pb-3 no-print">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center flex-wrap gap-2">
             <button
               type="button"
               onClick={() => setAdminViewTab('records')}
@@ -388,7 +391,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
               }`}
             >
-              Tabel Riwayat & Audit Presensi
+              Tabel Riwayat Presensi
             </button>
             <button
               type="button"
@@ -406,10 +409,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <button
             type="button"
             onClick={() => setDeleteAllConfirmOpen(true)}
-            className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold rounded-2xl text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-xs"
+            className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold rounded-2xl text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-xs shrink-0"
           >
             <Trash2 className="w-4 h-4 text-rose-600" />
-            <span>Hapus Semua Data</span>
+            <span>Hapus Semua Data Presensi</span>
           </button>
         </div>
 
@@ -430,7 +433,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer"
                   >
                     {CLASSES.map((cls) => (
-                      <option key={cls} value={cls}>{cls}</option>
+                      <option key={`rekap-cls-${cls}`} value={cls}>{cls}</option>
                     ))}
                   </select>
                 </div>
@@ -453,7 +456,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             {/* Rekap Summary Cards */}
             {(() => {
               const todayStr = new Date().toDateString();
-              const classStudentsList = INITIAL_STUDENTS.filter((s) => s.class === rekapClass);
+              const classStudentsList = getStudentsByClass(rekapClass);
               const checkedInToday = records.filter((r) => {
                 return (
                   r.class === rekapClass &&
@@ -496,8 +499,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                        {uncheckedList.map((stu) => (
-                          <div key={stu.id} className="p-3.5 rounded-2xl bg-rose-50/70 border border-rose-200 flex items-center justify-between gap-2 shadow-xs hover:border-rose-300 transition">
+                        {uncheckedList.map((stu, index) => (
+                          <div key={`${stu.class}-${stu.id}-${index}`} className="p-3.5 rounded-2xl bg-rose-50/70 border border-rose-200 flex items-center justify-between gap-2 shadow-xs hover:border-rose-300 transition">
                             <div className="min-w-0">
                               <div className="text-xs font-bold text-slate-900 truncate">{stu.name}</div>
                               <div className="text-[11px] text-slate-500 font-medium">
@@ -696,7 +699,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               >
                 <option value="">Semua Kelas</option>
                 {CLASSES.map((c) => (
-                  <option key={c} value={c}>
+                  <option key={`filter-cls-${c}`} value={c}>
                     {c}
                   </option>
                 ))}
@@ -829,7 +832,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               Tidak ada data presensi yang cocok dengan filter.
             </div>
           ) : (
-            paginatedRecords.map((rec) => {
+            paginatedRecords.map((rec, idx) => {
               const d = new Date(rec.created_at);
               const dateStr = d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
               const timeStr = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
@@ -851,7 +854,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               return (
                 <div
-                  key={rec.id}
+                  key={rec.id ? `${rec.id}-${idx}` : `card-rec-${idx}`}
                   className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs flex flex-col gap-3 transition hover:border-slate-300"
                 >
                   {/* Header Kartu: Nama Siswa & Badge Status */}
@@ -946,7 +949,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </td>
                   </tr>
                 ) : (
-                  paginatedRecords.map((rec) => {
+                  paginatedRecords.map((rec, idx) => {
                     const d = new Date(rec.created_at);
                     const dateStr = d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
                     const timeStr = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
@@ -967,7 +970,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     }
 
                     return (
-                      <tr key={rec.id} className="hover:bg-slate-50/80 transition">
+                      <tr key={rec.id ? `${rec.id}-${idx}` : `table-rec-${idx}`} className="hover:bg-slate-50/80 transition">
                         {/* Waktu Presensi */}
                         <td className="py-4 px-4 whitespace-nowrap text-slate-500 font-mono text-xs">
                           <div className="font-semibold text-slate-700">{timeStr} WIB</div>
