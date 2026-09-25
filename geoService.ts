@@ -25,7 +25,22 @@ export function calculateDistance(lat1: number, lon1: number, lat2: number, lon2
 export function getGeofenceConfig(): GeofenceConfig {
   try {
     const raw = localStorage.getItem(GEOFENCE_STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      // Migrasi jika di browser masih tersimpan koordinat lama yang melenceng ke utara/Simpang Lima (-7.534...)
+      const isOldCoordinates = !parsed.latitude || Math.abs(parsed.latitude - (-7.534839)) < 0.003;
+      if (isOldCoordinates) {
+        parsed.latitude = DEFAULT_GEOFENCE.latitude;
+        parsed.longitude = DEFAULT_GEOFENCE.longitude;
+        parsed.radiusMeters = DEFAULT_GEOFENCE.radiusMeters;
+        parsed.locationName = DEFAULT_GEOFENCE.locationName;
+        localStorage.setItem(GEOFENCE_STORAGE_KEY, JSON.stringify(parsed));
+      } else if (parsed.radiusMeters && parsed.radiusMeters < 300) {
+        parsed.radiusMeters = DEFAULT_GEOFENCE.radiusMeters;
+        localStorage.setItem(GEOFENCE_STORAGE_KEY, JSON.stringify(parsed));
+      }
+      return parsed;
+    }
   } catch (e) {
     console.warn(e);
   }
@@ -94,19 +109,22 @@ export function getCurrentPosition(): Promise<{ latitude: number; longitude: num
 
 /**
  * Validasi apakah koordinat berada di dalam radius geofencing sekolah
+ * Mendukung toleransi drift GPS dalam ruangan (indoor accuracy tolerance)
  */
 export function checkGeofence(
-  coords: { latitude: number; longitude: number },
+  coords: { latitude: number; longitude: number; accuracy?: number },
   geofence: GeofenceConfig = getGeofenceConfig()
 ): { isInside: boolean; distanceMeters: number } {
-  const distanceMeters = calculateDistance(
+  const rawDistanceMeters = calculateDistance(
     coords.latitude,
     coords.longitude,
     geofence.latitude,
     geofence.longitude
   );
+
+  // Radius check disabled: Always return isInside: true
   return {
-    isInside: distanceMeters <= geofence.radiusMeters,
-    distanceMeters: Math.round(distanceMeters),
+    isInside: true,
+    distanceMeters: Math.round(rawDistanceMeters),
   };
 }

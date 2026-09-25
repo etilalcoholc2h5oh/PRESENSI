@@ -1,5 +1,5 @@
 export type PrayerType = 'Dhuha' | 'Dzuhur' | 'Sholat Jumat';
-export type AttendanceStatus = 'Hadir' | "Halangan Syar'i" | 'Sakit' | 'Izin';
+export type AttendanceStatus = 'Hadir' | "Halangan Syar'i" | 'Sakit' | 'Izin' | 'Di Luar Radius' | 'Tidak Sah';
 
 export interface Student {
   id: string;
@@ -33,13 +33,6 @@ export interface GeofenceConfig {
   longitude: number;
   radiusMeters: number;
   locationName: string;
-}
-
-export interface SupabaseConfig {
-  url: string;
-  anonKey: string;
-  tableName: string;
-  isConnected: boolean;
 }
 
 export interface DetectionResult {
