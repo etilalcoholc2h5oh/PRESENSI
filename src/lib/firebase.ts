@@ -46,6 +46,3 @@ const app = initializeApp(resolvedConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app, resolvedConfig.firestoreDatabaseId || defaultConfig.firestoreDatabaseId);
 export const googleAuthProvider = new GoogleAuthProvider();
-
-
-
