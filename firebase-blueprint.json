@@ -1,0 +1,50 @@
+{
+  "entities": {
+    "attendance": {
+      "title": "Attendance Record",
+      "description": "Record of a student's prayer attendance",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 100 },
+        "class": { "type": "string", "maxLength": 50 },
+        "prayer_type": { "type": "string", "enum": ["Dhuha", "Dzuhur", "Ashar", "Maghrib", "Isya"] },
+        "status": { "type": "string", "enum": ["Hadir", "Izin", "Sakit", "Alpa"], "description": "Verification status" },
+        "ai_status": { "type": "string", "maxLength": 50 },
+        "gps_status": { "type": "string", "maxLength": 50 },
+        "image_base64": { "type": "string", "maxLength": 2000000 },
+        "location": {
+          "type": "object",
+          "properties": {
+            "lat": { "type": "number" },
+            "lng": { "type": "number" }
+          }
+        },
+        "notes": { "type": "string", "maxLength": 500 },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "class", "prayer_type", "status", "created_at"]
+    },
+    "user": {
+      "title": "User Profile",
+      "description": "User profile for authentication and roles",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["admin", "student"] },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role"]
+    }
+  },
+  "firestore": {
+    "attendance": {
+      "schema": "attendance",
+      "description": "Collection of attendance records"
+    },
+    "users": {
+      "schema": "user",
+      "description": "Collection of user profiles"
+    }
+  }
+}
