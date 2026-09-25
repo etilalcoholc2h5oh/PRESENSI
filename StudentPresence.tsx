@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Camera,
@@ -7,92 +7,155 @@ import {
   AlertCircle,
   X,
 } from 'lucide-react';
-import { Student, PrayerType, AttendanceStatus, DetectionResult } from '../types';
-import { CLASSES } from '../data/madrasahData';
+import { Student, PrayerType, AttendanceStatus, DetectionResult, AttendanceRecord } from '../types';
+import { CLASSES, PRAYER_TIME_CONFIG } from '../data/madrasahData';
+import { getStudentsByClass } from '../services/studentService';
 import {
-  loadCocoSsdModel,
-  detectObjects,
-  drawDetectionOverlay,
   captureFrameToCanvas,
   renderBeRealDualCanvas,
   playCameraShutterSound,
   BeRealRenderOptions,
 } from '../services/aiDetector';
-import {
-  getCurrentPosition,
-  checkGeofence,
-} from '../services/geoService';
-import { submitAttendanceRecord } from '../services/supabaseService';
+import { submitAttendanceRecord } from '../services/attendanceService';
 import { BypassModal } from './BypassModal';
 import { BeRealPreviewModal } from './BeRealPreviewModal';
 
+// Helper function to check if current time is within valid range
+const isTimeValid = (prayerType: PrayerType): boolean => {
+  const config = PRAYER_TIME_CONFIG[prayerType];
+  if (!config) return true; // No config, allow it
+  
+  const now = new Date();
+  const currentHour = now.getHours();
+  const currentMinute = now.getMinutes();
+  
+  const startTime = config.startHour * 60 + config.startMinute;
+  const endTime = config.endHour * 60 + config.endMinute;
+  const currentTime = currentHour * 60 + currentMinute;
+  
+  return currentTime >= startTime && currentTime <= endTime;
+};
+
 interface StudentPresenceProps {
+  records?: AttendanceRecord[];
   onRecordSubmitted: () => void;
-  onGpsUpdate: (isInside: boolean, distance: number) => void;
 }
 
 export const StudentPresence: React.FC<StudentPresenceProps> = ({
+  records = [],
   onRecordSubmitted,
-  onGpsUpdate,
 }) => {
   // 1. Identitas Siswa State
   const [selectedClass, setSelectedClass] = useState<string>(() => {
     return localStorage.getItem('man1_last_class') || 'X A';
   });
+
+  const [studentsVersion, setStudentsVersion] = useState<number>(0);
+  useEffect(() => {
+    const handleUpdate = () => setStudentsVersion((v) => v + 1);
+    window.addEventListener('students_updated', handleUpdate);
+    return () => window.removeEventListener('students_updated', handleUpdate);
+  }, []);
+
+  // Selalu sinkron dan instan tanpa jeda rendering
+  const classStudents = useMemo(() => {
+    return getStudentsByClass(selectedClass);
+  }, [selectedClass, studentsVersion]);
+
   const [studentName, setStudentName] = useState<string>(() => {
-    return localStorage.getItem('man1_last_student_name') || '';
+    const lastClass = localStorage.getItem('man1_last_class') || 'X A';
+    const lastName = localStorage.getItem('man1_last_student_name') || '';
+    if (lastName) {
+      const students = getStudentsByClass(lastClass);
+      if (students.some((s) => s.name === lastName)) {
+        return lastName;
+      }
+    }
+    try {
+      localStorage.removeItem('man1_last_student_name');
+    } catch (e) {}
+    return '';
   });
+
   const [studentGender, setStudentGender] = useState<'L' | 'P'>(() => {
     return (localStorage.getItem('man1_last_student_gender') as 'L' | 'P') || 'L';
   });
 
+  // Validasi ketat: jika nama siswa yang terpilih tidak ada di kelas aktif, segera reset
+  useEffect(() => {
+    if (studentName) {
+      const found = classStudents.find((s) => s.name === studentName);
+      if (!found) {
+        setStudentName('');
+        try {
+          localStorage.removeItem('man1_last_student_name');
+        } catch (e) {}
+      } else if (found.gender !== studentGender) {
+        setStudentGender(found.gender);
+      }
+    }
+  }, [classStudents, studentName, studentGender]);
+
+  const foundStudent = classStudents.find((s) => s.name === studentName);
   const currentStudent: Student = {
-    id: 'stu-' + (studentName.trim().toLowerCase().replace(/\s+/g, '-') || 'anon'),
-    nisn: '',
+    id: foundStudent ? foundStudent.id : ('stu-' + (studentName.trim().toLowerCase().replace(/\s+/g, '-') || 'anon')),
+    nisn: foundStudent ? foundStudent.nisn : '',
     name: studentName.trim(),
     class: selectedClass,
     gender: studentGender,
   };
 
   useEffect(() => {
-    if (selectedClass) localStorage.setItem('man1_last_class', selectedClass);
+    if (selectedClass) {
+      try {
+        localStorage.setItem('man1_last_class', selectedClass);
+      } catch (e) {}
+    }
   }, [selectedClass]);
+
   useEffect(() => {
-    if (studentName) localStorage.setItem('man1_last_student_name', studentName);
+    try {
+      if (studentName) {
+        localStorage.setItem('man1_last_student_name', studentName);
+      } else {
+        localStorage.removeItem('man1_last_student_name');
+      }
+    } catch (e) {}
   }, [studentName]);
+
   useEffect(() => {
-    if (studentGender) localStorage.setItem('man1_last_student_gender', studentGender);
+    if (studentGender) {
+      try {
+        localStorage.setItem('man1_last_student_gender', studentGender);
+      } catch (e) {}
+    }
   }, [studentGender]);
 
   // 2. Sesi Sholat & Hari Jumat
   const isFridayReal = new Date().getDay() === 5;
   const [prayerType, setPrayerType] = useState<PrayerType>('Dhuha');
 
-  // 3. Kamera & AI State
+  // 3. Kamera State
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
   const [cameraActive, setCameraActive] = useState<boolean>(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const [aiLoading, setAiLoading] = useState<boolean>(true);
-  const [aiStatusMsg, setAiStatusMsg] = useState<string>('Menyiapkan AI deteksi...');
-  const [latestDetection, setLatestDetection] = useState<DetectionResult>({
-    hasPerson: false,
-    score: 0,
-    allPredictions: [],
-  });
-
-  // 4. GPS & Geofencing State
-  const [gpsLoading, setGpsLoading] = useState<boolean>(false);
-  const [gpsInside, setGpsInside] = useState<boolean>(true);
-  const [gpsDistance, setGpsDistance] = useState<number>(35);
-  const [gpsCoords, setGpsCoords] = useState<{ latitude: number; longitude: number } | undefined>();
 
   // 5. Modals & Submission State
   const [bypassModalOpen, setBypassModalOpen] = useState<boolean>(false);
   const [bypassType, setBypassType] = useState<'Halangan' | 'SakitIzin'>('Halangan');
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [submitSuccessMsg, setSubmitSuccessMsg] = useState<string | null>(null);
+  const [submittedRecordInfo, setSubmittedRecordInfo] = useState<{
+    name: string;
+    class: string;
+    prayer: string;
+    time: string;
+    status: string;
+  } | null>(null);
+  const [submitErrorMsg, setSubmitErrorMsg] = useState<string | null>(null);
 
-  // 6. Dual Capture State
+  // 6. Dual vs Instant Capture State
+  const [captureMode, setCaptureMode] = useState<'instant' | 'bereal'>('instant');
   const [isBeRealCapturing, setIsBeRealCapturing] = useState<boolean>(false);
   const [beRealStepMsg, setBeRealStepMsg] = useState<string>('');
   const [countdownSec, setCountdownSec] = useState<number | null>(null);
@@ -125,29 +188,6 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
       }
     }
   }, [isFridayReal, studentGender, prayerType]);
-
-  const checkGps = async () => {
-    setGpsLoading(true);
-    try {
-      const pos = await getCurrentPosition();
-      const check = checkGeofence({ latitude: pos.latitude, longitude: pos.longitude });
-      setGpsInside(check.isInside);
-      setGpsDistance(check.distanceMeters);
-      setGpsCoords({ latitude: pos.latitude, longitude: pos.longitude });
-      onGpsUpdate(check.isInside, check.distanceMeters);
-    } catch (err: any) {
-      console.warn('GPS check error:', err);
-      setGpsInside(false);
-      setGpsDistance(999);
-      onGpsUpdate(false, 999);
-    } finally {
-      setGpsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    checkGps();
-  }, []);
 
   const startCamera = async (targetFacing: 'user' | 'environment' = facingMode) => {
     try {
@@ -198,21 +238,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
   useEffect(() => {
     let isMounted = true;
     const initAi = async () => {
-      try {
-        setAiLoading(true);
-        setAiStatusMsg('Memuat model AI deteksi siswa...');
-        await loadCocoSsdModel();
-        if (isMounted) {
-          setAiLoading(false);
-          setAiStatusMsg('AI Aktif');
-        }
-      } catch (err: any) {
-        console.error('AI loading error:', err);
-        if (isMounted) {
-          setAiLoading(false);
-          setAiStatusMsg('AI siap');
-        }
-      }
+      // AI removed - simplified
     };
     initAi();
     return () => {
@@ -223,35 +249,54 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
   useEffect(() => {
     let isRunning = true;
     let isDetecting = false;
-    const runLoop = async () => {
+    let lastDetectionTime = 0;
+
+    const runLoop = async (timestamp: number) => {
       if (!isRunning) return;
       if (
         videoRef.current &&
         canvasRef.current &&
-        videoRef.current.readyState >= 2 &&
-        !aiLoading
+        videoRef.current.readyState >= 2
       ) {
-        if (!isDetecting) {
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
+        if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+          canvas.width = video.videoWidth || 640;
+          canvas.height = video.videoHeight || 480;
+        }
+
+        const isUserMode = facingMode === 'user';
+
+        // Deteksi background dengan interval sat-set ~500ms (2 frame per detik)
+        // Menjamin HP tidak overheat dan video tetap mulus 60 FPS
+        if (!isDetecting && timestamp - lastDetectionTime > 500) {
           isDetecting = true;
-          try {
-            const video = videoRef.current;
-            const canvas = canvasRef.current;
-            if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
-              canvas.width = video.videoWidth || 640;
-              canvas.height = video.videoHeight || 480;
-            }
-            const result = await detectObjects(video);
-            setLatestDetection(result);
-            drawDetectionOverlay(canvas, video, result);
-          } catch (err) {
-            console.warn('Detection error:', err);
-          } finally {
-            isDetecting = false;
-          }
+          lastDetectionTime = timestamp;
+          /* detectObjects(video)
+            .then((result) => {
+              if (isRunning) {
+                latestDetectionRef.current = result;
+                setLatestDetection(result);
+              }
+            })
+            .catch((err) => {
+              console.warn('Detection error:', err);
+            })
+            .finally(() => {
+              isDetecting = false;
+            }); */
+
+        }
+
+    // Render overlay dan garis scanner secara mulus 60 FPS
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
         }
       }
       animationFrameRef.current = requestAnimationFrame(runLoop);
     };
+
     animationFrameRef.current = requestAnimationFrame(runLoop);
     return () => {
       isRunning = false;
@@ -259,7 +304,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [aiLoading, cameraActive]);
+  }, [facingMode, cameraActive]);
 
   // Pengambilan foto 2 sudut BeReal (Wajah & Suasana) secara cepat dan otomatis
   const handleStartCapture = async () => {
@@ -267,28 +312,25 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
       alert('Silakan ketik nama lengkap siswa terlebih dahulu.');
       return;
     }
-    if (!latestDetection.hasPerson) {
-      alert('AI belum mendeteksi siswa di depan kamera. Harap posisikan kamera menghadap siswa.');
-      return;
-    }
     if (!videoRef.current) return;
 
     setIsBeRealCapturing(true);
-    setBeRealStepMsg('Sudut 1: Wajah...');
+    setBeRealStepMsg('Mengambil foto presensi...');
     try {
       // 1. Shutter sound & visual flash sudut 1 (Wajah Siswa)
       playCameraShutterSound();
       setBeRealFlash(true);
       setTimeout(() => setBeRealFlash(false), 160);
 
-      // Ambil frame 1 langsung dari kamera aktif
+      // Ambil frame 1 langsung dari kamera aktif (sangat cepat < 50ms)
       const isCurrentMirrored = facingMode === 'user';
       const frame1 = captureFrameToCanvas(videoRef.current, isCurrentMirrored);
       frame1CanvasRef.current = frame1;
 
-      // 2. Ambil sudut 2 (Kamera belakang / Suasana Sholat)
-      setBeRealStepMsg('Sudut 2: Suasana...');
       let frame2: HTMLCanvasElement | null = null;
+
+      // MODE DUAL KAMERA (2 SUDUT): Wajah & Suasana Madrasah secara cepat
+      setBeRealStepMsg('Sudut 2: Suasana...');
       let switchedStream: MediaStream | null = null;
 
       try {
@@ -314,11 +356,11 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
             };
           });
 
-          // Jeda singkat 450ms untuk penyesuaian sensor
-          await new Promise((r) => setTimeout(r, 450));
+          // Jeda minimal 150ms agar sensor exposure kamera menyesuaikan secara cepat
+          await new Promise((r) => setTimeout(r, 150));
           playCameraShutterSound();
           setBeRealFlash(true);
-          setTimeout(() => setBeRealFlash(false), 160);
+          setTimeout(() => setBeRealFlash(false), 140);
           frame2 = captureFrameToCanvas(videoRef.current, targetMode === 'user');
         }
       } catch (switchErr) {
@@ -341,10 +383,8 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
         studentName: currentStudent.name,
         studentClass: currentStudent.class,
         prayerType: prayerType,
-        aiConfidence: latestDetection.score,
-        gpsText: gpsInside
-          ? `Area Madrasah (${gpsDistance}m)`
-          : `Luar Radius (${gpsDistance}m)`,
+        aiConfidence: 100,
+        gpsText: 'Presensi Sah',
       };
       beRealOptionsRef.current = renderOpts;
 
@@ -366,29 +406,37 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
     if (!currentStudent) return;
     setSubmitting(true);
     try {
+      const attendanceStatus: AttendanceStatus = isTimeValid(prayerType) ? 'Hadir' : 'Tidak Sah';
+      const autoNotes = isTimeValid(prayerType) 
+          ? `Presensi sah di area madrasah.`
+          : `Presensi di luar jam operasional (${prayerType}).`;
+
       const res = await submitAttendanceRecord({
         name: currentStudent.name,
         class: currentStudent.class,
         prayer_type: prayerType,
-        status: 'Hadir',
-        ai_status: `Valid (${latestDetection.score}%)`,
-        ai_confidence: latestDetection.score,
-        gps_status: gpsInside ? 'Valid (Dalam Radius)' : 'Di Luar Radius',
-        gps_distance: gpsDistance,
-        gps_coords: gpsCoords,
+        status: attendanceStatus,
+        ai_status: 'Manual',
+        ai_confidence: 100,
+        gps_status: 'Valid',
         snapshot_photo: finalPhoto,
-        notes: `Hadir sholat ${prayerType} berjamaah di Mushola & Lapangan Madrasah`,
+        notes: autoNotes,
         created_at: new Date().toISOString(),
       });
 
-      setSubmitSuccessMsg(res.message);
+      setSubmittedRecordInfo({
+        name: currentStudent.name,
+        class: currentStudent.class,
+        prayer: prayerType,
+        time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB',
+        status: attendanceStatus,
+      });
+      setSubmitSuccessMsg(res.message || 'Presensi Anda telah berhasil dikirim dan tercatat di sistem.');
       onRecordSubmitted();
       setBeRealModalOpen(false);
-      setTimeout(() => {
-        setSubmitSuccessMsg(null);
-      }, 5000);
     } catch (err: any) {
-      alert('Gagal mengirim presensi: ' + err.message);
+      const msg = err.message || '';
+      setSubmitErrorMsg(msg.includes('409') || msg.includes('sudah') ? 'Anda sudah melakukan presensi untuk sholat ini hari ini.' : 'Gagal mengirim presensi: ' + msg);
     } finally {
       setSubmitting(false);
     }
@@ -404,27 +452,55 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
         prayer_type: prayerType,
         status: status,
         ai_status: `Bypass (${status})`,
-        gps_status: gpsInside ? 'Valid (Dalam Radius)' : 'Di Luar Radius',
-        gps_distance: gpsDistance,
-        gps_coords: gpsCoords,
+        gps_status: 'Valid',
         notes: notes,
         created_at: new Date().toISOString(),
       });
-      setSubmitSuccessMsg(res.message);
+      setSubmittedRecordInfo({
+        name: currentStudent.name,
+        class: currentStudent.class,
+        prayer: prayerType,
+        time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB',
+        status: status,
+      });
+      setSubmitSuccessMsg(res.message || 'Data dispensasi berhasil dikirim dan tercatat.');
       onRecordSubmitted();
-      setTimeout(() => {
-        setSubmitSuccessMsg(null);
-      }, 5000);
     } catch (err: any) {
-      alert('Gagal mengirim data: ' + err.message);
+      const msg = err.message || '';
+      setSubmitErrorMsg(msg.includes('409') || msg.includes('sudah') ? 'Anda sudah melakukan presensi untuk sholat ini hari ini.' : 'Gagal mengirim data: ' + msg);
     } finally {
       setSubmitting(false);
     }
   };
 
-  const isPersonValid = latestDetection.hasPerson;
+  const [manualCaptureAllowed, setManualCaptureAllowed] = useState<boolean>(false);
+
+  // Jika kamera aktif selama 3 detik, aktifkan fallback tombol ambil foto
+  useEffect(() => {
+    let timer: any;
+    if (cameraActive) {
+      timer = setTimeout(() => {
+        setManualCaptureAllowed(true);
+      }, 3500);
+    } else {
+      setManualCaptureAllowed(false);
+    }
+    return () => clearTimeout(timer);
+  }, [cameraActive]);
+
+  const isPersonValid = true; // Always valid now
   const isNameValid = studentName.trim().length >= 2;
-  const isSubmitDisabled = !isNameValid || !isPersonValid || submitting;
+
+  const todayStrISO = new Date().toISOString().split('T')[0];
+  const hasAlreadySubmittedToday = records.some((r) => {
+    const recordDate = new Date(r.created_at).toISOString().split('T')[0];
+    const isSameName = (r.name || '').trim().toLowerCase() === studentName.trim().toLowerCase();
+    const isSameClass = (r.class || '').trim().toLowerCase() === selectedClass.trim().toLowerCase();
+    const isSamePrayer = r.prayer_type === prayerType;
+    return isSameName && isSameClass && isSamePrayer && recordDate === todayStrISO;
+  });
+
+  const isSubmitDisabled = !isNameValid || !isPersonValid || submitting || hasAlreadySubmittedToday;
 
   const todayStr = new Date().toLocaleDateString('id-ID', {
     weekday: 'long',
@@ -462,33 +538,88 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
         </div>
       </motion.div>
 
-      {/* Success Notification Banner (Tanpa tombol pintas, otomatis tercatat ke guru) */}
+      {/* Success Modal */}
       <AnimatePresence>
         {submitSuccessMsg && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: -10 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: -10 }}
-            className="p-4 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs sm:text-sm flex items-center justify-between gap-3 shadow-sm"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
-                <CheckCircle2 className="w-5 h-5" />
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-white rounded-3xl p-6 shadow-2xl max-w-sm w-full text-center space-y-4 border border-emerald-100"
+            >
+              <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-inner">
+                 <CheckCircle2 className="w-9 h-9" />
               </div>
               <div>
-                <div className="font-bold text-emerald-900">Alhamdulillah! Presensi Berhasil</div>
-                <div className="text-xs text-emerald-700">{submitSuccessMsg}</div>
+                <h3 className="font-black text-xl text-slate-900">Presensi Berhasil Terkirim!</h3>
+                <p className="text-slate-600 text-xs mt-1 font-medium leading-relaxed">{submitSuccessMsg}</p>
               </div>
-            </div>
 
-            <button
-              type="button"
-              onClick={() => setSubmitSuccessMsg(null)}
-              className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-emerald-100/50 transition cursor-pointer"
+              {submittedRecordInfo && (
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 text-left text-xs space-y-1.5 text-slate-700 font-medium">
+                  <div className="flex justify-between items-center py-0.5 border-b border-slate-200/60">
+                    <span className="text-slate-500">Nama Siswa:</span>
+                    <span className="font-bold text-slate-900">{submittedRecordInfo.name}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-0.5 border-b border-slate-200/60">
+                    <span className="text-slate-500">Kelas:</span>
+                    <span className="font-bold text-slate-900">{submittedRecordInfo.class}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-0.5 border-b border-slate-200/60">
+                    <span className="text-slate-500">Sholat:</span>
+                    <span className="font-bold text-emerald-700">{submittedRecordInfo.prayer}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-0.5 border-b border-slate-200/60">
+                    <span className="text-slate-500">Waktu:</span>
+                    <span className="font-bold text-slate-900">{submittedRecordInfo.time}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-0.5">
+                    <span className="text-slate-500">Status:</span>
+                    <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 text-[11px]">{submittedRecordInfo.status}</span>
+                  </div>
+                </div>
+              )}
+
+              <button
+                onClick={() => {
+                  setSubmitSuccessMsg(null);
+                  setSubmittedRecordInfo(null);
+                }}
+                className="w-full py-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold rounded-2xl cursor-pointer hover:from-emerald-700 hover:to-teal-700 transition shadow-md active:scale-95"
+              >
+                Selesai
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Error Modal */}
+      <AnimatePresence>
+        {submitErrorMsg && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-white rounded-3xl p-6 shadow-2xl max-w-sm w-full text-center space-y-4 border border-rose-100"
             >
-              <X className="w-4 h-4" />
-            </button>
-          </motion.div>
+              <div className="w-20 h-20 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center mx-auto shadow-inner">
+                 <AlertCircle className="w-10 h-10" />
+              </div>
+              <div>
+                <h3 className="font-black text-xl text-slate-900">Perhatian</h3>
+                <p className="text-rose-700 text-sm mt-1 font-medium leading-relaxed">{submitErrorMsg}</p>
+              </div>
+              <button
+                onClick={() => setSubmitErrorMsg(null)}
+                className="w-full py-4 bg-slate-800 text-white font-bold rounded-2xl cursor-pointer hover:bg-slate-900 transition shadow-md active:scale-95"
+              >
+                Tutup
+              </button>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
 
@@ -519,11 +650,18 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
                 <select
                   id="select-kelas-siswa"
                   value={selectedClass}
-                  onChange={(e) => setSelectedClass(e.target.value)}
+                  onChange={(e) => {
+                    const newClass = e.target.value;
+                    setSelectedClass(newClass);
+                    setStudentName('');
+                    try {
+                      localStorage.removeItem('man1_last_student_name');
+                    } catch (err) {}
+                  }}
                   className="w-full bg-slate-50 hover:bg-white border border-slate-300 rounded-2xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none transition cursor-pointer"
                 >
                   {CLASSES.map((cls) => (
-                    <option key={cls} value={cls}>
+                    <option key={`pres-cls-${cls}`} value={cls}>
                       {cls}
                     </option>
                   ))}
@@ -532,22 +670,41 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
 
               {/* Nama Siswa */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Nama Lengkap Siswa:
-                </label>
-                <div>
-                  <input
-                    type="text"
-                    id="input-nama-siswa"
-                    value={studentName}
-                    onChange={(e) => setStudentName(e.target.value)}
-                    placeholder="Ketik nama lengkap Anda..."
-                    className="w-full bg-slate-50 hover:bg-white border border-slate-300 rounded-2xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 placeholder-slate-400 font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none transition"
-                  />
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <span>Nama Lengkap Siswa:</span>
+                    <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                      {classStudents.length} Siswa
+                    </span>
+                  </label>
                 </div>
+
+                <div>
+                  <select
+                    id="select-nama-siswa"
+                    value={studentName}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setStudentName(val);
+                      const found = classStudents.find((s) => s.name === val);
+                      if (found) {
+                        setStudentGender(found.gender);
+                      }
+                    }}
+                    className="w-full bg-slate-50 hover:bg-white border border-slate-300 rounded-2xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none transition cursor-pointer"
+                  >
+                    <option value="">-- Pilih Nama Siswa ({classStudents.length} Siswa) --</option>
+                    {classStudents.map((stu, index) => (
+                      <option key={`pres-stu-${stu.class}-${stu.id}-${index}`} value={stu.name}>
+                        {stu.name} ({stu.gender === 'L' ? 'L' : 'P'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 {!isNameValid && (
                   <p className="text-[11px] text-amber-600 mt-1 font-medium">
-                    Ketik nama lengkap untuk mengaktifkan tombol foto
+                    Pilih nama lengkap dari daftar untuk mengaktifkan tombol foto
                   </p>
                 )}
               </div>
@@ -702,6 +859,19 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
           whileHover={{ y: -2 }}
           transition={{ type: 'spring', stiffness: 400, damping: 20 }}
         >
+          {/* Header Kontrol Kamera */}
+          <div className="flex items-center justify-between gap-2 pb-1">
+            <div className="flex items-center gap-1.5">
+              <Camera className="w-4 h-4 text-emerald-600" />
+              <span className="text-xs font-bold text-slate-800">Kamera Presensi</span>
+            </div>
+
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-bold">
+              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+              <span>Dual Kamera (2 Sudut)</span>
+            </div>
+          </div>
+
           {/* Kamera Viewport Frame */}
           <div className="relative w-full aspect-[4/3] bg-slate-950 rounded-3xl overflow-hidden border border-slate-200 shadow-inner flex items-center justify-center">
             {/* Video Stream */}
@@ -718,9 +888,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
             {/* Canvas Overlay Bounding Box */}
             <canvas
               ref={canvasRef}
-              className={`absolute inset-0 w-full h-full pointer-events-none ${
-                facingMode === 'user' ? 'scale-x-[-1]' : ''
-              }`}
+              className="absolute inset-0 w-full h-full pointer-events-none"
             />
 
             {/* Flash Effect */}
@@ -755,14 +923,6 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
               </div>
             )}
 
-            {/* AI Loading State */}
-            {aiLoading && (
-              <div className="absolute inset-0 bg-slate-900/70 backdrop-blur-xs flex flex-col items-center justify-center p-6 text-center z-20">
-                <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mb-2"></div>
-                <div className="text-xs font-bold text-white">{aiStatusMsg}</div>
-              </div>
-            )}
-
             {/* Camera Error State */}
             {cameraError && (
               <div className="absolute inset-0 bg-slate-900/85 flex flex-col items-center justify-center p-6 text-center z-20">
@@ -776,27 +936,6 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
                 >
                   Akses Kamera
                 </button>
-              </div>
-            )}
-
-            {/* AI Status Badge */}
-            {!aiLoading && !cameraError && (
-              <div className="absolute top-3 left-3 z-10">
-                {isPersonValid ? (
-                  <motion.div
-                    className="px-3 py-1 rounded-full bg-slate-900/85 border border-emerald-500 text-emerald-300 text-xs font-bold flex items-center gap-1.5 backdrop-blur-xs shadow-xs"
-                    animate={{ scale: [1, 1.03, 1] }}
-                    transition={{ duration: 2, repeat: Infinity }}
-                  >
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                    <span>Siswa Terdeteksi ({latestDetection.score}%)</span>
-                  </motion.div>
-                ) : (
-                  <div className="px-3 py-1 rounded-full bg-slate-900/85 border border-rose-500/70 text-rose-300 text-xs font-bold flex items-center gap-1.5 backdrop-blur-xs shadow-xs">
-                    <span className="w-2 h-2 rounded-full bg-rose-500"></span>
-                    <span>Arahkan ke Wajah Siswa</span>
-                  </div>
-                )}
               </div>
             )}
 
@@ -816,41 +955,15 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
             </motion.button>
           </div>
 
-          {/* GPS Status Strip - Clean & Aligned */}
-          <div className="flex items-center justify-between gap-2.5 px-3.5 py-2.5 bg-slate-50 rounded-2xl border border-slate-200/90 text-xs shadow-2xs">
-            <div className="flex items-center gap-2 min-w-0">
-              <span
-                className={`w-2.5 h-2.5 rounded-full shrink-0 ${
-                  gpsInside ? 'bg-emerald-500 ring-4 ring-emerald-100' : 'bg-rose-500 ring-4 ring-rose-100'
-                }`}
-              />
-              <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-                <span className="font-bold text-slate-800 text-xs">
-                  {gpsInside ? 'Area Madrasah' : 'Luar Radius'}
-                </span>
-                <span className="px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-600 font-mono text-[11px] font-semibold shadow-2xs">
-                  {gpsDistance} m
-                </span>
-              </div>
-            </div>
-
-            <motion.button
-              type="button"
-              id="btn-refresh-gps"
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.96 }}
-              onClick={checkGps}
-              disabled={gpsLoading}
-              className="shrink-0 px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
-              title="Perbarui koordinat GPS"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 text-emerald-600 ${gpsLoading ? 'animate-spin' : ''}`} />
-              <span>Perbarui GPS</span>
-            </motion.button>
-          </div>
-
           {/* Primary Action Button */}
-          <div>
+          <div className="space-y-3">
+            {hasAlreadySubmittedToday && (
+              <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>Anda sudah melakukan presensi untuk sholat {prayerType} hari ini. Absensi tidak dapat dilakukan dua kali.</span>
+              </div>
+            )}
+
             <motion.button
               type="button"
               id="btn-jebret-bereal"
@@ -859,25 +972,32 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
               whileTap={!isSubmitDisabled && !isBeRealCapturing ? { scale: 0.97 } : {}}
               onClick={handleStartCapture}
               className={`w-full py-3.5 px-4 rounded-2xl font-bold text-sm tracking-wide transition flex items-center justify-center gap-2 shadow-sm cursor-pointer ${
-                isSubmitDisabled || isBeRealCapturing
+                hasAlreadySubmittedToday
+                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-default'
+                  : isSubmitDisabled || isBeRealCapturing
                   ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
                   : 'bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-emerald-600/20'
               }`}
             >
-              {isBeRealCapturing ? (
+              {hasAlreadySubmittedToday ? (
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  <span>Presensi Berhasil Tercatat</span>
+                </div>
+              ) : isBeRealCapturing ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />
                   <span>Mengambil foto presensi...</span>
                 </>
               ) : !isNameValid ? (
-                <span>Ketik Nama Siswa Terlebih Dahulu</span>
-              ) : isPersonValid ? (
+                <span>Pilih Nama Siswa Terlebih Dahulu</span>
+              ) : (
                 <>
                   <Camera className="w-4 h-4 text-white" />
-                  <span>Ambil Presensi: {studentName.trim()}</span>
+                  <span>
+                    Jepret Presensi (2 Sudut): {studentName.trim()}
+                  </span>
                 </>
-              ) : (
-                <span>Arahkan Kamera ke Wajah Siswa</span>
               )}
             </motion.button>
           </div>

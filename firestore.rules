@@ -1,70 +1,25 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Default deny
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // Helper functions
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    function isEmailVerified() {
-      return isSignedIn() && request.auth.token.email_verified == true;
-    }
-
-    function isAdmin() {
-      return isSignedIn() && (
-        request.auth.token.email == 'aniksetyanirahayuuu@gmail.com' ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
-      );
-    }
-
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
-
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
-    }
-
-    // Attendance Rules
     match /attendance/{recordId} {
       function isValidAttendance(data) {
         return data.keys().hasAll(['name', 'class', 'prayer_type', 'status', 'created_at']) &&
-               data.keys().hasOnly(['name', 'class', 'prayer_type', 'status', 'created_at', 'ai_status', 'gps_status', 'image_base64', 'location', 'notes', 'userId']) &&
-               data.name is string && data.name.size() <= 100 &&
-               data.class is string && data.class.size() <= 50 &&
-               data.prayer_type in ['Dhuha', 'Dzuhur', 'Ashar', 'Maghrib', 'Isya'] &&
-               data.status in ['Hadir', 'Izin', 'Sakit', 'Alpa'] &&
-               data.created_at is string;
+               data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+               data.class is string && data.class.size() > 0 && data.class.size() <= 50 &&
+               data.prayer_type is string && data.prayer_type.size() <= 30 &&
+               data.status is string && data.status.size() <= 50 &&
+               data.created_at is string && data.created_at.size() <= 50;
       }
 
-      allow read: if isSignedIn(); // For now, let everyone see for rekap
-      allow create: if isEmailVerified() && isValidAttendance(request.resource.data);
-      allow update: if isAdmin() || (
-        isSignedIn() && 
-        isValidAttendance(request.resource.data) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'notes'])
-      );
-      allow delete: if isAdmin();
-    }
-
-    // User Rules
-    match /users/{userId} {
-      function isValidUser(data) {
-        return data.keys().hasAll(['uid', 'email', 'role', 'created_at']) &&
-               data.keys().hasOnly(['uid', 'email', 'role', 'created_at']) &&
-               data.uid == request.auth.uid &&
-               data.email == request.auth.token.email &&
-               data.role in ['admin', 'student'];
-      }
-
-      allow read: if isOwner(userId) || isAdmin();
-      allow create: if isOwner(userId) && isValidUser(request.resource.data);
-      allow update: if isAdmin() && isValidUser(request.resource.data);
+      allow read: if true;
+      allow create: if isValidAttendance(request.resource.data);
+      allow update: if true;
+      allow delete: if true;
     }
   }
 }
+

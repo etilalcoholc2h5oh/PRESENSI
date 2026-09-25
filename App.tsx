@@ -5,7 +5,7 @@ import { AttendanceRecord } from './types';
 import { Navbar } from './components/Navbar';
 import { StudentPresence } from './components/StudentPresence';
 import { AdminDashboard } from './components/AdminDashboard';
-import { getAttendanceRecords } from './services/supabaseService';
+import { getAttendanceRecords } from './services/attendanceService';
 import { MADRASAH_INFO } from './data/madrasahData';
 
 const ADMIN_PIN = '3103'; // PIN Pengawas tetap: 3103 (mencegah manipulasi oleh siswa)
@@ -175,10 +175,8 @@ export default function App() {
               transition={{ duration: 0.25 }}
             >
               <StudentPresence
+                records={records}
                 onRecordSubmitted={loadRecords}
-                onGpsUpdate={(inside) => {
-                  setIsInsideGeofence(inside);
-                }}
               />
             </motion.div>
           )}
@@ -207,7 +205,6 @@ export default function App() {
             {new Date().getFullYear()} {MADRASAH_INFO.name} - Sistem Presensi Sholat Siswa
           </div>
           <div className="flex items-center gap-1.5 text-slate-500 font-medium">
-            <span>Didukung AI Deteksi Siswa dan Geofencing GPS</span>
           </div>
         </div>
       </footer>
