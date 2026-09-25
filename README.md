@@ -17,3 +17,4 @@ Aplikasi presensi ibadah harian terverifikasi berbasis Dual-Camera AI & Geofenci
 - Dilengkapi proteksi **Rate Limiting anti brute-force**:
   - Maksimal 5x kesalahan input PIN berturut-turut.
   - Penguncian (*lockout*) selama 30 detik dengan timer hitungan mundur.
+ 
