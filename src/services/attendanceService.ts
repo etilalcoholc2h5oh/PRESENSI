@@ -1,275 +1,173 @@
-import {
-  collection,
-  addDoc,
-  getDocs,
-  doc,
-  updateDoc,
-  deleteDoc,
-  query,
-  where,
-  orderBy,
-  writeBatch,
-} from 'firebase/firestore';
-import { db, auth } from '../lib/firebase';
 import { AttendanceRecord } from '../types';
 
 const LOCAL_RECORDS_KEY = 'man1_local_attendance_records';
 let memoryRecordsCache: AttendanceRecord[] | null = null;
 
-enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
-
-interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId?: string | null;
-    email?: string | null;
-    emailVerified?: boolean | null;
-    isAnonymous?: boolean | null;
-    tenantId?: string | null;
-    providerInfo?: {
-      providerId?: string | null;
-      email?: string | null;
-    }[];
-  };
-}
-
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): never {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
-      providerInfo:
-        auth.currentUser?.providerData?.map((provider) => ({
-          providerId: provider.providerId,
-          email: provider.email,
-        })) || [],
-    },
-    operationType,
-    path,
-  };
-  console.error('Firestore Error:', JSON.stringify(errInfo));
-  throw new Error(error instanceof Error ? error.message : 'Database error');
-}
-
 function saveLocalCache(records: AttendanceRecord[]) {
   memoryRecordsCache = [...records];
-  try {
-    localStorage.setItem(LOCAL_RECORDS_KEY, JSON.stringify(records));
-  } catch (e) {
-    console.warn('Storage quota warning', e);
-  }
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('presensi_updated', { detail: records }));
-  }
-}
-
-export async function getAttendanceRecords(): Promise<{ data: AttendanceRecord[]; isFromCloud: boolean }> {
-  try {
-    const q = query(collection(db, 'attendance'), orderBy('created_at', 'desc'));
-    const snapshot = await getDocs(q);
-    const records = snapshot.docs.map((docSnap) => ({
-      id: docSnap.id,
-      ...(docSnap.data() as Omit<AttendanceRecord, 'id'>),
-    }));
-
-    saveLocalCache(records);
-    return { data: records, isFromCloud: true };
-  } catch (err: any) {
-    console.warn('Gagal fetch data langsung dari Firestore, mencoba fallback server / cache:', err);
-    // Fallback to server API if direct Firestore fails
     try {
-      const res = await fetch('/api/attendance');
-      if (res.ok) {
-        const result = await res.json();
-        if (result.success && Array.isArray(result.data)) {
-          saveLocalCache(result.data);
-          return { data: result.data, isFromCloud: true };
-        }
-      }
-    } catch {
-      // ignore
-    }
-  }
+        localStorage.setItem(LOCAL_RECORDS_KEY, JSON.stringify(records));
+          } catch (e) {}
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('presensi_updated', { detail: records }));
+                  }
+                  }
 
-  const raw = localStorage.getItem(LOCAL_RECORDS_KEY);
-  const data = raw ? JSON.parse(raw) : (memoryRecordsCache || []);
-  return { data, isFromCloud: false };
-}
+                  // 1. AMBIL REKAP: Langsung dari Server SQL Neon (Bebas Kuota Firebase)
+                  export async function getAttendanceRecords(): Promise<{ data: AttendanceRecord[]; isFromCloud: boolean }> {
+                    let records: AttendanceRecord[] = [];
+                      let isFromCloud = true;
 
-export async function submitAttendanceRecord(
-  record: Omit<AttendanceRecord, 'id'>
-): Promise<{ success: boolean; record: AttendanceRecord; isCloud: boolean; message: string }> {
-  const name = record.name.trim();
-  const prayerType = record.prayer_type;
-  const now = new Date();
-  const today = new Date(record.created_at || now.toISOString()).toISOString().split('T')[0];
+                        try {
+                            const res = await fetch('/api/attendance', { headers: { Accept: 'application/json' } });
+                                if (res.ok) {
+                                      const result = await res.json();
+                                            if (result.success && Array.isArray(result.data)) {
+                                                    records = result.data;
+                                                          }
+                                                              } else {
+                                                                    isFromCloud = false;
+                                                                        }
+                                                                          } catch (err) {
+                                                                              isFromCloud = false;
+                                                                                }
 
-  // 1. Fast duplicate check via Firestore
-  try {
-    const duplicateQuery = query(
-      collection(db, 'attendance'),
-      where('name', '==', name),
-      where('prayer_type', '==', prayerType)
-    );
-    const existingSnap = await getDocs(duplicateQuery);
-    const isDuplicate = existingSnap.docs.some((docSnap) => {
-      const data = docSnap.data();
-      const docDate = new Date(data.created_at).toISOString().split('T')[0];
-      return docDate === today;
-    });
+                                                                                  if (records.length === 0) {
+                                                                                      try {
+                                                                                            const raw = localStorage.getItem(LOCAL_RECORDS_KEY);
+                                                                                                  if (raw) {
+                                                                                                          const parsed = JSON.parse(raw);
+                                                                                                                  if (Array.isArray(parsed) && parsed.length > 0) records = parsed;
+                                                                                                                        }
+                                                                                                                            } catch (e) {}
+                                                                                                                              }
 
-    if (isDuplicate) {
-      throw new Error(`Anda sudah melakukan presensi untuk sholat ${prayerType} hari ini.`);
-    }
-  } catch (err: any) {
-    if (err.message && err.message.includes('sudah melakukan presensi')) {
-      throw err;
-    }
-    console.warn('Pengecekan duplikat dilewati:', err);
-  }
+                                                                                                                                records.sort((a, b) => {
+                                                                                                                                    const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+                                                                                                                                        const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+                                                                                                                                            return tb - ta;
+                                                                                                                                              });
 
-  // 2. Direct write to Firestore (Ultra fast < 100ms)
-  try {
-    const newDocData = {
-      ...record,
-      name,
-      created_at: record.created_at || now.toISOString(),
-    };
+                                                                                                                                                if (records.length > 0) saveLocalCache(records);
+                                                                                                                                                  return { data: records, isFromCloud };
+                                                                                                                                                  }
 
-    const docRef = await addDoc(collection(db, 'attendance'), newDocData);
-    const savedRecord: AttendanceRecord = {
-      id: docRef.id,
-      ...newDocData,
-    };
+                                                                                                                                                  // 2. PANTAU REAL-TIME: Polling Server SQL setiap 4 detik (Tanpa Firebase onSnapshot)
+                                                                                                                                                  export function subscribeToAttendance(callback: (records: AttendanceRecord[]) => void) {
+                                                                                                                                                    getAttendanceRecords().then((res) => callback(res.data));
 
-    // Update local cache & notify
-    getAttendanceRecords().catch(() => {});
+                                                                                                                                                      const intervalId = setInterval(async () => {
+                                                                                                                                                          try {
+                                                                                                                                                                const res = await fetch('/api/attendance', { headers: { Accept: 'application/json' } });
+                                                                                                                                                                      if (res.ok) {
+                                                                                                                                                                              const result = await res.json();
+                                                                                                                                                                                      if (result.success && Array.isArray(result.data)) {
+                                                                                                                                                                                                saveLocalCache(result.data);
+                                                                                                                                                                                                          callback(result.data);
+                                                                                                                                                                                                                  }
+                                                                                                                                                                                                                        }
+                                                                                                                                                                                                                            } catch {}
+                                                                                                                                                                                                                              }, 4000);
 
-    return {
-      success: true,
-      record: savedRecord,
-      isCloud: true,
-      message: 'Presensi berhasil dicatat di server cloud.',
-    };
-  } catch (firestoreErr: any) {
-    console.error('Direct Firestore write error, attempting server fallback:', firestoreErr);
-    
-    // Fallback: Submit to /api/attendance
-    try {
-      const res = await fetch('/api/attendance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(record),
-      });
-      const result = await res.json();
-      if (res.ok && result.success) {
-        getAttendanceRecords().catch(() => {});
-        return {
-          success: true,
-          record: result.record,
-          isCloud: true,
-          message: 'Presensi berhasil dicatat di server cloud.',
-        };
-      }
-      throw new Error(result.message || 'Gagal menyimpan presensi');
-    } catch (apiErr: any) {
-      handleFirestoreError(firestoreErr || apiErr, OperationType.CREATE, 'attendance');
-    }
-  }
-}
+                                                                                                                                                                                                                                return () => clearInterval(intervalId);
+                                                                                                                                                                                                                                }
 
-export async function updateRecordStatus(
-  id: string,
-  newStatus: AttendanceRecord['status'],
-  notes?: string
-): Promise<boolean> {
-  try {
-    const docRef = doc(db, 'attendance', id);
-    await updateDoc(docRef, {
-      status: newStatus,
-      notes: notes || '',
-    });
-    getAttendanceRecords().catch(() => {});
-    return true;
-  } catch (err) {
-    console.warn('Direct update failed, trying server API:', err);
-    try {
-      const res = await fetch(`/api/attendance/${encodeURIComponent(id)}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus, notes }),
-      });
-      if (res.ok) {
-        getAttendanceRecords().catch(() => {});
-        return true;
-      }
-    } catch {
-      // ignore
-    }
-  }
-  return false;
-}
+                                                                                                                                                                                                                                // 3. SISWA KIRIM ABSENSI: Langsung simpan ke Database SQL Neon
+                                                                                                                                                                                                                                export async function submitAttendanceRecord(
+                                                                                                                                                                                                                                  record: Omit<AttendanceRecord, 'id'>
+                                                                                                                                                                                                                                  ): Promise<{ success: boolean; record: AttendanceRecord; isCloud: boolean; message: string }> {
+                                                                                                                                                                                                                                    try {
+                                                                                                                                                                                                                                        const res = await fetch('/api/attendance', {
+                                                                                                                                                                                                                                              method: 'POST',
+                                                                                                                                                                                                                                                    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                                                                                                                                                                                                                                                          body: JSON.stringify(record),
+                                                                                                                                                                                                                                                              });
 
-export async function deleteRecord(id: string): Promise<boolean> {
-  try {
-    const docRef = doc(db, 'attendance', id);
-    await deleteDoc(docRef);
-    getAttendanceRecords().catch(() => {});
-    return true;
-  } catch (err) {
-    console.warn('Direct delete failed, trying server API:', err);
-    try {
-      const res = await fetch(`/api/attendance/${encodeURIComponent(id)}`, {
-        method: 'DELETE',
-      });
-      if (res.ok) {
-        getAttendanceRecords().catch(() => {});
-        return true;
-      }
-    } catch {
-      // ignore
-    }
-  }
-  return false;
-}
+                                                                                                                                                                                                                                                                  const result = await res.json();
+                                                                                                                                                                                                                                                                      if (!res.ok) {
+                                                                                                                                                                                                                                                                            throw new Error(result.message || 'Gagal menyimpan presensi');
+                                                                                                                                                                                                                                                                                }
 
-export async function deleteAllAttendanceRecords(): Promise<boolean> {
-  try {
-    const snapshot = await getDocs(collection(db, 'attendance'));
-    const batch = writeBatch(db);
-    snapshot.docs.forEach((d) => batch.delete(d.ref));
-    await batch.commit();
-    getAttendanceRecords().catch(() => {});
-    return true;
-  } catch (err) {
-    console.warn('Direct delete all failed, trying server API:', err);
-    try {
-      const res = await fetch('/api/attendance', { method: 'DELETE' });
-      const data = await res.json();
-      if (data.success) {
-        getAttendanceRecords().catch(() => {});
-        return true;
-      }
-    } catch {
-      // ignore
-    }
-  }
-  return false;
-}
+                                                                                                                                                                                                                                                                                    const savedRecord = result.record as AttendanceRecord;
+                                                                                                                                                                                                                                                                                        const current = memoryRecordsCache || [];
+                                                                                                                                                                                                                                                                                            saveLocalCache([savedRecord, ...current.filter((r) => r.id !== savedRecord.id)]);
 
-export function getStoredConfig() {
-  return { isConnected: true };
-}
+                                                                                                                                                                                                                                                                                                return {
+                                                                                                                                                                                                                                                                                                      success: true,
+                                                                                                                                                                                                                                                                                                            record: savedRecord,
+                                                                                                                                                                                                                                                                                                                  isCloud: true,
+                                                                                                                                                                                                                                                                                                                        message: result.message || 'Presensi berhasil dicatat di Server SQL.',
+                                                                                                                                                                                                                                                                                                                            };
+                                                                                                                                                                                                                                                                                                                              } catch (err: any) {
+                                                                                                                                                                                                                                                                                                                                  if (err.message && (err.message.includes('sudah') || err.message.includes('tercatat'))) {
+                                                                                                                                                                                                                                                                                                                                        throw err;
+                                                                                                                                                                                                                                                                                                                                            }
+
+                                                                                                                                                                                                                                                                                                                                                const fallbackRecord: AttendanceRecord = {
+                                                                                                                                                                                                                                                                                                                                                      id: `rec-local-${Date.now()}`,
+                                                                                                                                                                                                                                                                                                                                                            ...record,
+                                                                                                                                                                                                                                                                                                                                                                  created_at: record.created_at || new Date().toISOString(),
+                                                                                                                                                                                                                                                                                                                                                                      };
+                                                                                                                                                                                                                                                                                                                                                                          const currentRecords = memoryRecordsCache || [];
+                                                                                                                                                                                                                                                                                                                                                                              saveLocalCache([fallbackRecord, ...currentRecords]);
+
+                                                                                                                                                                                                                                                                                                                                                                                  return {
+                                                                                                                                                                                                                                                                                                                                                                                        success: true,
+                                                                                                                                                                                                                                                                                                                                                                                              record: fallbackRecord,
+                                                                                                                                                                                                                                                                                                                                                                                                    isCloud: false,
+                                                                                                                                                                                                                                                                                                                                                                                                          message: 'Presensi tersimpan di perangkat.',
+                                                                                                                                                                                                                                                                                                                                                                                                              };
+                                                                                                                                                                                                                                                                                                                                                                                                                }
+                                                                                                                                                                                                                                                                                                                                                                                                                }
+
+                                                                                                                                                                                                                                                                                                                                                                                                                // 4. KOREKSI STATUS GURU
+                                                                                                                                                                                                                                                                                                                                                                                                                export async function updateRecordStatus(
+                                                                                                                                                                                                                                                                                                                                                                                                                  id: string,
+                                                                                                                                                                                                                                                                                                                                                                                                                    newStatus: AttendanceRecord['status'],
+                                                                                                                                                                                                                                                                                                                                                                                                                      notes?: string
+                                                                                                                                                                                                                                                                                                                                                                                                                      ): Promise<boolean> {
+                                                                                                                                                                                                                                                                                                                                                                                                                        try {
+                                                                                                                                                                                                                                                                                                                                                                                                                            const res = await fetch(`/api/attendance?id=${encodeURIComponent(id)}`, {
+                                                                                                                                                                                                                                                                                                                                                                                                                                  method: 'PATCH',
+                                                                                                                                                                                                                                                                                                                                                                                                                                        headers: { 'Content-Type': 'application/json' },
+                                                                                                                                                                                                                                                                                                                                                                                                                                              body: JSON.stringify({ id, status: newStatus, notes }),
+                                                                                                                                                                                                                                                                                                                                                                                                                                                  });
+                                                                                                                                                                                                                                                                                                                                                                                                                                                      if (res.ok) {
+                                                                                                                                                                                                                                                                                                                                                                                                                                                            if (memoryRecordsCache) {
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                    const updated = memoryRecordsCache.map((r) =>
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                              r.id === id ? { ...r, status: newStatus, notes: notes ?? r.notes } : r
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      );
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              saveLocalCache(updated);
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    }
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          return true;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              }
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                } catch {}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  return false;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  }
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  // 5. HAPUS DATA
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  export async function deleteRecord(id: string): Promise<boolean> {
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    try {
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        const res = await fetch(`/api/attendance?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            if (res.ok) {
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  if (memoryRecordsCache) saveLocalCache(memoryRecordsCache.filter((r) => r.id !== id));
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        return true;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            }
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              } catch {}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                return false;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                }
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                export async function deleteAllAttendanceRecords(): Promise<boolean> {
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  try {
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      const res = await fetch('/api/attendance', { method: 'DELETE' });
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          if (res.ok) {
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                saveLocalCache([]);
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      return true;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          }
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            } catch {}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              return false;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              }
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              export function getStoredConfig() {
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                return { isConnected: true };
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                }
