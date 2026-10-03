@@ -233,17 +233,6 @@ export default function App() {
         </AnimatePresence>
       </main>
 
-      {/* Footer without bullet symbols */}
-      <footer className="no-print border-t border-slate-200 bg-white py-4 px-4 text-center text-xs text-slate-500">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
-          <div className="font-medium">
-            {new Date().getFullYear()} {MADRASAH_INFO.name} - Sistem Presensi Sholat Siswa
-          </div>
-          <div className="flex items-center gap-1.5 text-slate-500 font-medium">
-          </div>
-        </div>
-      </footer>
-
       {/* PIN Authentication Modal for Guru/Admin */}
       <AnimatePresence>
         {pinModalOpen && (

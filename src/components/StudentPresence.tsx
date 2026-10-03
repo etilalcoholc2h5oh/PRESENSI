@@ -862,7 +862,6 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
           {/* Header Kontrol Kamera */}
           <div className="flex items-center justify-between gap-2 pb-1">
             <div className="flex items-center gap-1.5">
-              <Camera className="w-4 h-4 text-emerald-600" />
               <span className="text-xs font-bold text-slate-800">Kamera Presensi</span>
             </div>
 
@@ -959,7 +958,6 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
           <div className="space-y-3">
             {hasAlreadySubmittedToday && (
               <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
                 <span>Anda sudah melakukan presensi untuk sholat {prayerType} hari ini. Absensi tidak dapat dilakukan dua kali.</span>
               </div>
             )}
@@ -981,7 +979,6 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
             >
               {hasAlreadySubmittedToday ? (
                 <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                   <span>Presensi Berhasil Tercatat</span>
                 </div>
               ) : isBeRealCapturing ? (
