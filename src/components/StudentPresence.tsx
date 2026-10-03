@@ -38,7 +38,7 @@ const isTimeValid = (prayerType: PrayerType): boolean => {
 
 interface StudentPresenceProps {
   records?: AttendanceRecord[];
-  onRecordSubmitted: () => void;
+  onRecordSubmitted: (newRecord?: AttendanceRecord) => void;
 }
 
 export const StudentPresence: React.FC<StudentPresenceProps> = ({
@@ -151,7 +151,27 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
     prayer: string;
     time: string;
     status: string;
-  } | null>(null);
+    date?: string;
+  } | null>(() => {
+    try {
+      const raw = localStorage.getItem('man1_last_submission_session');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && parsed.name) return parsed;
+      }
+    } catch (e) {}
+    return null;
+  });
+  const [locallySubmittedRecords, setLocallySubmittedRecords] = useState<AttendanceRecord[]>(() => {
+    try {
+      const raw = localStorage.getItem('man1_local_attendance_records');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {}
+    return [];
+  });
   const [submitErrorMsg, setSubmitErrorMsg] = useState<string | null>(null);
 
   // 6. Dual vs Instant Capture State
@@ -405,8 +425,8 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
   const handleConfirmBeRealSubmit = async (finalPhoto: string) => {
     if (!currentStudent) return;
     setSubmitting(true);
+    const attendanceStatus: AttendanceStatus = isTimeValid(prayerType) ? 'Hadir' : 'Tidak Sah';
     try {
-      const attendanceStatus: AttendanceStatus = isTimeValid(prayerType) ? 'Hadir' : 'Tidak Sah';
       const autoNotes = isTimeValid(prayerType) 
           ? `Presensi sah di area madrasah.`
           : `Presensi di luar jam operasional (${prayerType}).`;
@@ -424,18 +444,38 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
         created_at: new Date().toISOString(),
       });
 
-      setSubmittedRecordInfo({
+      const info = {
         name: currentStudent.name,
         class: currentStudent.class,
         prayer: prayerType,
         time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB',
         status: attendanceStatus,
-      });
+        date: todayStrISO,
+      };
+      setSubmittedRecordInfo(info);
+      try {
+        localStorage.setItem('man1_last_submission_session', JSON.stringify(info));
+      } catch (e) {}
       setSubmitSuccessMsg(res.message || 'Presensi Anda telah berhasil dikirim dan tercatat di sistem.');
-      onRecordSubmitted();
+      setLocallySubmittedRecords((prev) => [res.record, ...prev]);
+      onRecordSubmitted(res.record);
       setBeRealModalOpen(false);
     } catch (err: any) {
       const msg = err.message || '';
+      if (msg.includes('409') || msg.includes('sudah')) {
+        const info = {
+          name: currentStudent.name,
+          class: currentStudent.class,
+          prayer: prayerType,
+          time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB',
+          status: attendanceStatus,
+          date: todayStrISO,
+        };
+        setSubmittedRecordInfo(info);
+        try {
+          localStorage.setItem('man1_last_submission_session', JSON.stringify(info));
+        } catch (e) {}
+      }
       setSubmitErrorMsg(msg.includes('409') || msg.includes('sudah') ? 'Anda sudah melakukan presensi untuk sholat ini hari ini.' : 'Gagal mengirim presensi: ' + msg);
     } finally {
       setSubmitting(false);
@@ -444,6 +484,11 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
 
   const handleBypassSubmit = async (status: AttendanceStatus, notes: string) => {
     if (!currentStudent) return;
+    const cleanNotes = notes ? notes.trim() : '';
+    if (!cleanNotes) {
+      setSubmitErrorMsg('Keterangan / alasan dispensasi wajib diisi terlebih dahulu.');
+      return;
+    }
     setSubmitting(true);
     try {
       const res = await submitAttendanceRecord({
@@ -453,20 +498,40 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
         status: status,
         ai_status: `Bypass (${status})`,
         gps_status: 'Valid',
-        notes: notes,
+        notes: cleanNotes,
         created_at: new Date().toISOString(),
       });
-      setSubmittedRecordInfo({
+      const info = {
         name: currentStudent.name,
         class: currentStudent.class,
         prayer: prayerType,
         time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB',
         status: status,
-      });
+        date: todayStrISO,
+      };
+      setSubmittedRecordInfo(info);
+      try {
+        localStorage.setItem('man1_last_submission_session', JSON.stringify(info));
+      } catch (e) {}
       setSubmitSuccessMsg(res.message || 'Data dispensasi berhasil dikirim dan tercatat.');
-      onRecordSubmitted();
+      setLocallySubmittedRecords((prev) => [res.record, ...prev]);
+      onRecordSubmitted(res.record);
     } catch (err: any) {
       const msg = err.message || '';
+      if (msg.includes('409') || msg.includes('sudah')) {
+        const info = {
+          name: currentStudent.name,
+          class: currentStudent.class,
+          prayer: prayerType,
+          time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB',
+          status: status,
+          date: todayStrISO,
+        };
+        setSubmittedRecordInfo(info);
+        try {
+          localStorage.setItem('man1_last_submission_session', JSON.stringify(info));
+        } catch (e) {}
+      }
       setSubmitErrorMsg(msg.includes('409') || msg.includes('sudah') ? 'Anda sudah melakukan presensi untuk sholat ini hari ini.' : 'Gagal mengirim data: ' + msg);
     } finally {
       setSubmitting(false);
@@ -491,14 +556,88 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
   const isPersonValid = true; // Always valid now
   const isNameValid = studentName.trim().length >= 2;
 
-  const todayStrISO = new Date().toISOString().split('T')[0];
-  const hasAlreadySubmittedToday = records.some((r) => {
-    const recordDate = new Date(r.created_at).toISOString().split('T')[0];
-    const isSameName = (r.name || '').trim().toLowerCase() === studentName.trim().toLowerCase();
-    const isSameClass = (r.class || '').trim().toLowerCase() === selectedClass.trim().toLowerCase();
-    const isSamePrayer = r.prayer_type === prayerType;
-    return isSameName && isSameClass && isSamePrayer && recordDate === todayStrISO;
-  });
+  const getLocalDateString = (dateInput: any): string => {
+    try {
+      if (!dateInput) return '';
+      
+      let d: Date;
+      if (typeof dateInput === 'object') {
+        if (typeof dateInput.toDate === 'function') {
+          d = dateInput.toDate();
+        } else if (dateInput instanceof Date) {
+          d = dateInput;
+        } else if (typeof dateInput.seconds === 'number') {
+          d = new Date(dateInput.seconds * 1000);
+        } else {
+          // Try standard Date parsing
+          d = new Date(dateInput);
+        }
+      } else {
+        d = new Date(dateInput);
+      }
+
+      if (isNaN(d.getTime())) return '';
+      
+      const formatter = new Intl.DateTimeFormat('sv-SE', {
+        timeZone: 'Asia/Jakarta',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      });
+      return formatter.format(d);
+    } catch (err) {
+      console.warn('getLocalDateString error:', err);
+      try {
+        const d = new Date(dateInput);
+        if (isNaN(d.getTime())) return '';
+        return d.toISOString().split('T')[0];
+      } catch (inner) {
+        return '';
+      }
+    }
+  };
+
+  const todayStrISO = getLocalDateString(new Date());
+  const normalizeName = (name: string) => (name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const normalizeClass = (cls: string) => (cls || '').trim().toLowerCase().replace(/\s+/g, '');
+
+  const allKnownRecords = useMemo(() => {
+    let storageList: AttendanceRecord[] = [];
+    try {
+      const raw = localStorage.getItem('man1_local_attendance_records');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) storageList = parsed;
+      }
+    } catch (e) {}
+
+    const map = new Map<string, AttendanceRecord>();
+    [...locallySubmittedRecords, ...storageList, ...records].forEach((r) => {
+      if (r && (r.id || (r.name && r.created_at))) {
+        const key = r.id || `${r.name}-${r.prayer_type}-${r.created_at}`;
+        map.set(key, r);
+      }
+    });
+    return Array.from(map.values());
+  }, [locallySubmittedRecords, records]);
+
+  const isJustSubmittedSession = Boolean(
+    submittedRecordInfo &&
+    normalizeName(submittedRecordInfo.name) === normalizeName(studentName) &&
+    submittedRecordInfo.prayer === prayerType &&
+    (!submittedRecordInfo.date || submittedRecordInfo.date === todayStrISO)
+  );
+
+  const hasAlreadySubmittedToday = Boolean(
+    isJustSubmittedSession ||
+    (studentName && studentName.trim().length >= 2 && allKnownRecords.some((r) => {
+      const isSameName = normalizeName(r.name) === normalizeName(studentName);
+      const isSamePrayer = r.prayer_type === prayerType;
+      if (!isSameName || !isSamePrayer) return false;
+      const recordDate = getLocalDateString(r.created_at);
+      return !recordDate || recordDate === todayStrISO;
+    }))
+  );
 
   const isSubmitDisabled = !isNameValid || !isPersonValid || submitting || hasAlreadySubmittedToday;
 
@@ -548,8 +687,8 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
               className="bg-white rounded-3xl p-6 shadow-2xl max-w-sm w-full text-center space-y-4 border border-emerald-100"
             >
-              <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-inner">
-                 <CheckCircle2 className="w-9 h-9" />
+              <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-inner text-xl font-bold">
+                 ✓
               </div>
               <div>
                 <h3 className="font-black text-xl text-slate-900">Presensi Berhasil Terkirim!</h3>
@@ -584,7 +723,6 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
               <button
                 onClick={() => {
                   setSubmitSuccessMsg(null);
-                  // setSubmittedRecordInfo(null);
                 }}
                 className="w-full py-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold rounded-2xl cursor-pointer hover:from-emerald-700 hover:to-teal-700 transition shadow-md active:scale-95"
               >
@@ -812,9 +950,9 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
               <motion.button
                 type="button"
                 id="btn-bypass-haid"
-                disabled={studentGender === 'L'}
-                whileHover={{ scale: studentGender === 'L' ? 1 : 1.02 }}
-                whileTap={{ scale: studentGender === 'L' ? 1 : 0.96 }}
+                disabled={studentGender === 'L' || hasAlreadySubmittedToday}
+                whileHover={{ scale: (studentGender === 'L' || hasAlreadySubmittedToday) ? 1 : 1.02 }}
+                whileTap={{ scale: (studentGender === 'L' || hasAlreadySubmittedToday) ? 1 : 0.96 }}
                 onClick={() => {
                   if (!isNameValid) {
                     alert('Harap ketik nama lengkap Anda terlebih dahulu.');
@@ -824,7 +962,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
                   setBypassModalOpen(true);
                 }}
                 className={`py-2 px-3 rounded-2xl font-bold border transition flex items-center justify-center cursor-pointer ${
-                  studentGender === 'L'
+                  studentGender === 'L' || hasAlreadySubmittedToday
                     ? 'bg-slate-50 border-slate-200 text-slate-300 opacity-40 cursor-not-allowed'
                     : 'bg-rose-50 hover:bg-rose-100 border-rose-200 text-rose-700'
                 }`}
@@ -835,8 +973,9 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
               <motion.button
                 type="button"
                 id="btn-bypass-sakit"
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.96 }}
+                disabled={hasAlreadySubmittedToday}
+                whileHover={{ scale: hasAlreadySubmittedToday ? 1 : 1.02 }}
+                whileTap={{ scale: hasAlreadySubmittedToday ? 1 : 0.96 }}
                 onClick={() => {
                   if (!isNameValid) {
                     alert('Harap ketik nama lengkap Anda terlebih dahulu.');
@@ -845,7 +984,11 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
                   setBypassType('SakitIzin');
                   setBypassModalOpen(true);
                 }}
-                className="py-2 px-3 rounded-2xl font-bold bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 transition flex items-center justify-center cursor-pointer"
+                className={`py-2 px-3 rounded-2xl font-bold transition flex items-center justify-center cursor-pointer ${
+                  hasAlreadySubmittedToday
+                    ? 'bg-slate-50 border-slate-200 text-slate-300 opacity-40 cursor-not-allowed'
+                    : 'bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800'
+                }`}
               >
                 <span>Sakit / Izin</span>
               </motion.button>
@@ -909,10 +1052,10 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
                 ) : (
                   <motion.div
                     className="w-12 h-12 rounded-2xl bg-emerald-600 flex items-center justify-center text-white shadow-md"
-                    animate={{ rotate: [-5, 5, -5] }}
+                    animate={{ scale: [1, 1.08, 1] }}
                     transition={{ duration: 1.5, repeat: Infinity }}
                   >
-                    <Camera className="w-6 h-6" />
+                    <span className="w-3.5 h-3.5 rounded-full bg-white animate-ping"></span>
                   </motion.div>
                 )}
 
@@ -957,7 +1100,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
           {/* Primary Action Button */}
           <div className="space-y-3">
             {hasAlreadySubmittedToday && (
-              <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold flex items-center gap-2">
+              <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold leading-relaxed">
                 <span>Anda sudah melakukan presensi untuk sholat {prayerType} hari ini. Absensi tidak dapat dilakukan dua kali.</span>
               </div>
             )}
@@ -971,16 +1114,14 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
               onClick={handleStartCapture}
               className={`w-full py-3.5 px-4 rounded-2xl font-bold text-sm tracking-wide transition flex items-center justify-center gap-2 shadow-sm cursor-pointer ${
                 hasAlreadySubmittedToday
-                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-default'
+                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-300 cursor-default shadow-none'
                   : isSubmitDisabled || isBeRealCapturing
                   ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
                   : 'bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-emerald-600/20'
               }`}
             >
               {hasAlreadySubmittedToday ? (
-                <div className="flex items-center gap-2">
-                  <span>Presensi Berhasil Tercatat</span>
-                </div>
+                <span>Presensi Berhasil Tercatat</span>
               ) : isBeRealCapturing ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />
@@ -990,7 +1131,6 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
                 <span>Pilih Nama Siswa Terlebih Dahulu</span>
               ) : (
                 <>
-                  <Camera className="w-4 h-4 text-white" />
                   <span>
                     Jepret Presensi (2 Sudut): {studentName.trim()}
                   </span>
