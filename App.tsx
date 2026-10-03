@@ -75,7 +75,42 @@ export default function App() {
   };
 
   useEffect(() => {
-    loadRecords();
+      // Hanya ambil dari SQL ketika tab Admin dibuka oleh Guru
+      if (activeTab === 'admin') {
+        loadRecords();
+        const unsubscribe = subscribeToAttendance((updatedRecords) => {
+              setRecords(updatedRecords);
+              setIsCloudConnected(true);
+            });
+            return () => {
+              if (unsubscribe) unsubscribe();
+            };
+          } else {
+            // Untuk siswa di HP, baca memori lokal sendiri
+            try {
+              const raw = localStorage.getItem('man1_local_attendance_records');
+                if (raw) {
+                  const parsed = JSON.parse(raw);
+                  if (Array.isArray(parsed)) {
+                    setRecords(parsed);
+                  }
+                }
+              } catch (e) {}
+            }
+            
+            const handleUpdate = (e: Event) => {
+              const customEvent = e as CustomEvent<AttendanceRecord[]>;
+              if (customEvent.detail && Array.isArray(customEvent.detail)) {
+                setRecords(customEvent.detail);
+              }
+            };
+                                                                                                                                                                                                    
+        window.addEventListener('presensi_updated', handleUpdate);                               
+          return () => {
+        window.removeEventListener('presensi_updated', handleUpdate);
+      };
+    }, [activeTab]);
+  }
     const handleUpdate = (e: Event) => {
       const customEvent = e as CustomEvent<AttendanceRecord[]>;
       if (customEvent.detail && Array.isArray(customEvent.detail)) {
