@@ -5,10 +5,10 @@ import { AttendanceRecord } from './types';
 import { Navbar } from './components/Navbar';
 import { StudentPresence } from './components/StudentPresence';
 import { AdminDashboard } from './components/AdminDashboard';
-import { getAttendanceRecords } from './services/attendanceService';
+import { getAttendanceRecords, subscribeToAttendance } from './services/attendanceService';
 import { MADRASAH_INFO } from './data/madrasahData';
 
-const ADMIN_PIN = '3103'; // PIN Pengawas tetap: 3103 (mencegah manipulasi oleh siswa)
+const DEFAULT_PIN = '3103';
 const PIN_FAILED_ATTEMPTS_KEY = 'man1_pin_failed_attempts';
 const PIN_LOCKOUT_UNTIL_KEY = 'man1_pin_lockout_until';
 const MAX_PIN_ATTEMPTS = 5;
@@ -17,7 +17,26 @@ const LOCKOUT_DURATION_SECONDS = 30;
 export default function App() {
   const [activeTab, setActiveTab] = useState<'student' | 'admin'>('student');
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
+  const [recentlySubmitted, setRecentlySubmitted] = useState<AttendanceRecord[]>([]);
   const [isCloudConnected, setIsCloudConnected] = useState<boolean>(false);
+
+  // Dynamic Admin PIN State
+  const [adminPin, setAdminPin] = useState<string>(() => {
+    try {
+      return localStorage.getItem('man1_admin_pin_v2') || DEFAULT_PIN;
+    } catch (e) {
+      return DEFAULT_PIN;
+    }
+  });
+
+  const handleUpdateAdminPin = (newPin: string) => {
+    setAdminPin(newPin);
+    try {
+      localStorage.setItem('man1_admin_pin_v2', newPin);
+    } catch (e) {
+      console.error('Failed to save custom PIN:', e);
+    }
+  };
 
   // GPS Geofence status synced with Navbar
   const [isInsideGeofence, setIsInsideGeofence] = useState<boolean>(true);
@@ -64,10 +83,25 @@ export default function App() {
   }, []);
 
   // Load records on start and on update
-  const loadRecords = async () => {
+  const loadRecords = async (newRecord?: AttendanceRecord) => {
+    if (newRecord) {
+      setRecentlySubmitted((prev) => {
+        if (prev.some((r) => r.id === newRecord.id)) return prev;
+        return [newRecord, ...prev];
+      });
+      setRecords((prev) => {
+        if (prev.some((r) => r.id === newRecord.id)) return prev;
+        return [newRecord, ...prev];
+      });
+    }
     try {
       const res = await getAttendanceRecords();
-      setRecords(res.data);
+      setRecords((prev) => {
+        const map = new Map<string, AttendanceRecord>();
+        (res.data || []).forEach((r) => { if (r && r.id) map.set(r.id, r); });
+        prev.forEach((r) => { if (r && r.id) map.set(r.id, r); });
+        return Array.from(map.values());
+      });
       setIsCloudConnected(res.isFromCloud);
     } catch (err) {
       console.error('Error fetching records:', err);
@@ -75,19 +109,30 @@ export default function App() {
   };
 
   useEffect(() => {
+    // Selalu muat data presensi agar HP siswa langsung mendeteksi presensi hari ini
     loadRecords();
+
+    if (activeTab === 'admin') {
+      const unsubscribe = subscribeToAttendance((updatedRecords) => {
+        setRecords(updatedRecords);
+        setIsCloudConnected(true);
+      });
+      return () => {
+        if (unsubscribe) unsubscribe();
+      };
+    }
+
     const handleUpdate = (e: Event) => {
       const customEvent = e as CustomEvent<AttendanceRecord[]>;
       if (customEvent.detail && Array.isArray(customEvent.detail)) {
         setRecords(customEvent.detail);
       }
-      loadRecords();
     };
     window.addEventListener('presensi_updated', handleUpdate);
     return () => {
       window.removeEventListener('presensi_updated', handleUpdate);
     };
-  }, []);
+  }, [activeTab]);
 
   const handleOpenAdminAuth = () => {
     if (isAdminAuthenticated) {
@@ -111,7 +156,7 @@ export default function App() {
       return;
     }
 
-    if (pinInput.trim() === ADMIN_PIN) {
+    if (pinInput.trim() === adminPin) {
       // Success: Clear rate limiting
       localStorage.removeItem(PIN_FAILED_ATTEMPTS_KEY);
       localStorage.removeItem(PIN_LOCKOUT_UNTIL_KEY);
@@ -174,10 +219,18 @@ export default function App() {
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.25 }}
             >
-              <StudentPresence
-                records={records}
-                onRecordSubmitted={loadRecords}
-              />
+              {(() => {
+                const mergedRecords = [
+                  ...recentlySubmitted.filter(r => !records.some(rec => rec.id === r.id)),
+                  ...records
+                ];
+                return (
+                  <StudentPresence
+                    records={mergedRecords}
+                    onRecordSubmitted={loadRecords}
+                  />
+                );
+              })()}
             </motion.div>
           )}
           {activeTab === 'admin' && (
@@ -192,11 +245,15 @@ export default function App() {
                 records={records}
                 isCloudConnected={isCloudConnected}
                 onRefreshData={loadRecords}
+                adminPin={adminPin}
+                onUpdateAdminPin={handleUpdateAdminPin}
               />
             </motion.div>
           )}
         </AnimatePresence>
       </main>
+
+
 
       {/* PIN Authentication Modal for Guru/Admin */}
       <AnimatePresence>
