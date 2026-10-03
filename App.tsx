@@ -76,7 +76,12 @@ export default function App() {
 
   useEffect(() => {
       // Hanya ambil dari SQL ketika tab Admin dibuka oleh Guru
-      if (activeTab === 'admin') {
+      useEffect(() => {
+            loadRecords();
+
+                if (activeTab === 'admin') {
+      }
+      }
         loadRecords();
         const unsubscribe = subscribeToAttendance((updatedRecords) => {
               setRecords(updatedRecords);
