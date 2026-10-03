@@ -584,7 +584,6 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
               <button
                 onClick={() => {
                   setSubmitSuccessMsg(null);
-                  //setSubmittedRecordInfo(null);
                 }}
                 className="w-full py-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold rounded-2xl cursor-pointer hover:from-emerald-700 hover:to-teal-700 transition shadow-md active:scale-95"
               >
