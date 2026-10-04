@@ -28,8 +28,66 @@ import {
 import { exportToExcel, exportToPdf } from '../services/exportService';
 import {
   updateRecordStatus,
-  deleteRecord,
-  deleteAllAttendanceRecords,
+  /**
+   *  * Menghapus satu rekaman presensi dari Server SQL & Cache Lokal
+    */
+    export async function deleteRecord(id: string): Promise<boolean> {
+      let isDeleted = false;
+        try {
+            const res = await fetch(`/api/attendance/${encodeURIComponent(id)}`, {
+                  method: 'DELETE',
+                      });
+                          if (res.ok) {
+                                isDeleted = true;
+                                    }
+                                      } catch (err) {
+                                          console.warn('Delete record server error, cleaning local cache:', err);
+                                            }
+
+                                              // Selalu bersihkan cache lokal dan memori
+                                                try {
+                                                    let current = memoryRecordsCache;
+                                                        if (!current) {
+                                                              const raw = localStorage.getItem(LOCAL_RECORDS_KEY);
+                                                                    current = raw ? JSON.parse(raw) : [];
+                                                                        }
+                                                                            if (Array.isArray(current)) {
+                                                                                  const filtered = current.filter((r) => r.id !== id);
+                                                                                        saveLocalCache(filtered);
+                                                                                              isDeleted = true;
+                                                                                                  }
+                                                                                                      const lastSession = localStorage.getItem('man1_last_submission_session');
+                                                                                                          if (lastSession) {
+                                                                                                                try {
+                                                                                                                        const parsed = JSON.parse(lastSession);
+                                                                                                                                if (parsed?.id === id) {
+                                                                                                                                          localStorage.removeItem('man1_last_submission_session');
+                                                                                                                                                  }
+                                                                                                                                                        } catch (e) {}
+                                                                                                                                                            }
+                                                                                                                                                              } catch (e) {
+                                                                                                                                                                  console.error('Local cache delete error:', e);
+                                                                                                                                                                    }
+
+                                                                                                                                                                      return isDeleted;
+                                                                                                                                                                      }
+
+                                                                                                                                                                      /**
+                                                                                                                                                                       * Mengosongkan seluruh data presensi di Server SQL & Cache Lokal
+                                                                                                                                                                        */
+                                                                                                                                                                        export async function deleteAllAttendanceRecords(): Promise<boolean> {
+                                                                                                                                                                          try {
+                                                                                                                                                                              await fetch('/api/attendance', { method: 'DELETE' });
+                                                                                                                                                                                } catch (err) {
+                                                                                                                                                                                    console.warn('Delete all server error, clearing local cache:', err);
+                                                                                                                                                                                      }
+                                                                                                                                                                                        saveLocalCache([]);
+                                                                                                                                                                                          try {
+                                                                                                                                                                                              localStorage.removeItem('man1_last_submission_session');
+                                                                                                                                                                                                } catch (e) {}
+                                                                                                                                                                                                  return true;
+                                                                                                                                                                                                  }
+   */
 } from '../services/attendanceService';
 import {
   getGeofenceConfig,
