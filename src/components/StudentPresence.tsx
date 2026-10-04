@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  Camera,
-  RefreshCw,
-  CheckCircle2,
-  AlertCircle,
-  X,
-} from 'lucide-react';
+    Camera,
+      RefreshCw,
+        CheckCircle2,
+          Check,
+            AlertCircle,
+              X,
+              } from 'lucide-react';
 import { Student, PrayerType, AttendanceStatus, DetectionResult, AttendanceRecord } from '../types';
 import { CLASSES, PRAYER_TIME_CONFIG } from '../data/madrasahData';
 import { getStudentsByClass } from '../services/studentService';
@@ -687,9 +688,9 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
               className="bg-white rounded-3xl p-6 shadow-2xl max-w-sm w-full text-center space-y-4 border border-emerald-100"
             >
-              <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-inner text-xl font-bold">
-                 ✓
-              </div>
+              <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center mx-auto text-emerald-600">
+                  <Check className="w-7 h-7 text-emerald-600 stroke-[2.5]" />
+                  </div>
               <div>
                 <h3 className="font-black text-xl text-slate-900">Presensi Berhasil Terkirim!</h3>
                 <p className="text-slate-600 text-xs mt-1 font-medium leading-relaxed">{submitSuccessMsg}</p>
