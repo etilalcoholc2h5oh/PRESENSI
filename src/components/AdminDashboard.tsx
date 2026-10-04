@@ -489,7 +489,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   {/* Daftar Siswa Belum Absen */}
                   <div>
                     <h4 className="text-xs font-bold uppercase tracking-wider text-rose-700 mb-3 flex items-center gap-2">
-                      <AlertCircle className="w-4 h-4 text-rose-600" />
                       <span>Daftar Siswa Kelas {rekapClass} yang BELUM Absen ({rekapPrayer})</span>
                     </h4>
 
