@@ -515,17 +515,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             {(() => {
               const todayStr = new Date().toDateString();
               const classStudentsList = getStudentsByClass(rekapClass);
-              const checkedInToday = records.filter((r) => {
-                return (
-                  r.class === rekapClass &&
-                  r.prayer_type === rekapPrayer &&
-                  new Date(r.created_at).toDateString() === todayStr &&
-                  r.status === 'Hadir'
-                );
-              });
+              const recordsToday = records.filter((r) => {
+                                return (
+                                                  r.class === rekapClass &&
+                                                                    r.prayer_type === rekapPrayer &&
+                                                                                      getLocalDateString(r.created_at) === todayStr
+                                                                                                      );
+                                                                                                                    });
 
-              const checkedNamesSet = new Set(checkedInToday.map((r) => r.name.trim().toLowerCase()));
-              const uncheckedList = classStudentsList.filter((s) => !checkedNamesSet.has(s.name.trim().toLowerCase()));
+                                                                                                                                  const hadirCount = recordsToday.filter((r) => r.status === 'Hadir').length;
+                                                                                                                                                const haidCount = recordsToday.filter((r) => r.status === 'Haid').length;
+                                                                                                                                                              const sakitIzinCount = recordsToday.filter((r) => r.status === 'Sakit' || r.status === 'Izin').length;
+
+                                                                                                                                                                            const recordedMap = new Map<string, string>();
+                                                                                                                                                                                          recordsToday.forEach((r) => {
+                                                                                                                                                                                                          recordedMap.set(r.name.trim().toLowerCase(), r.status);
+                                                                                                                                                                                                                        });
+
+                                                                                                                                                                                                                                      const uncheckedList = classStudentsList.filter((s) => !recordedMap.has(s.name.trim().toLowerCase()));
+              })
 
               return (
                 <div className="space-y-6">
