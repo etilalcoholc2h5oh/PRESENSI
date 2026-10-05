@@ -2149,13 +2149,6 @@ export const INITIAL_STUDENTS: Student[] = [
     "gender": "L"
   },
   {
-    "id": "14111",
-    "nisn": "14111",
-    "name": "Muhammad Zidan Rafka Abdillah",
-    "class": "X I",
-    "gender": "L"
-  },
-  {
     "id": "14112",
     "nisn": "14112",
     "name": "Muwaffaqah Fathiyya Hayfa",
