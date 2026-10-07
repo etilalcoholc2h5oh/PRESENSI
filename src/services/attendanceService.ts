@@ -229,3 +229,18 @@ export async function deleteAllAttendanceRecords(): Promise<boolean> {
 }
 
 export const subscribeToAttendance = (callback: (records: AttendanceRecord[]) => void) => subscribeToAttendanceRecords((recs) => callback(recs));
+
+// Alias untuk AdminDashboard
+export const deleteRecord = deleteAttendanceRecord;
+
+export async function updateRecordStatus(id: string, status: string, notes?: string): Promise<void> {
+  const updated = getLocalRecords().map((r) =>
+    r.id === id ? { ...r, status: status as any, notes: notes ?? r.notes } : r
+  );
+  saveLocalRecords(updated);
+  if (db) {
+    try {
+      await updateDoc(doc(db, 'attendance', id), { status, notes: notes ?? '' });
+    } catch {}
+  }
+}
