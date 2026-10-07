@@ -55,11 +55,28 @@ export function getSafeDateISOString(dateVal: any): string {
 const LOCAL_STORAGE_KEY = 'man1_boyolali_attendance_records_v2';
 const DELETED_KEYS_STORAGE = 'man1_boyolali_deleted_keys_v2';
 
+// Foto base64 (puluhan KB per data) TIDAK disimpan di localStorage: JSON.parse/stringify
+// yang besar memblokir halaman dan bikin kamera lambat muncul. Foto cukup ada di Firestore.
+function stripPhotos(records: AttendanceRecord[]): AttendanceRecord[] {
+  return records.map((r) => {
+    if (!r || !r.snapshot_photo) return r;
+    const { snapshot_photo, ...rest } = r;
+    return rest as AttendanceRecord;
+  });
+}
+
 export function getLocalRecords(): AttendanceRecord[] {
   try {
     const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (!raw) return [];
-    return JSON.parse(raw);
+    const parsed: AttendanceRecord[] = JSON.parse(raw);
+    // Migrasi sekali: data lama yang masih berisi foto dibersihkan
+    if (raw.length > 200_000 && parsed.some((r) => r && r.snapshot_photo)) {
+      const slim = stripPhotos(parsed);
+      saveLocalRecords(slim);
+      return slim;
+    }
+    return parsed;
   } catch {
     return [];
   }
@@ -67,7 +84,7 @@ export function getLocalRecords(): AttendanceRecord[] {
 
 function saveLocalRecords(records: AttendanceRecord[]) {
   try {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(records));
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(stripPhotos(records).slice(0, 300)));
   } catch {}
 }
 
@@ -144,6 +161,7 @@ export async function getAttendanceRecords(isAdmin: boolean = false): Promise<At
   const deletedKeys = getDeletedRecordKeys();
   const local = getLocalRecords();
   let merged: AttendanceRecord[] = [...local];
+  let isFromCloud = false;
 
   if (db) {
     try {
@@ -171,12 +189,14 @@ export async function getAttendanceRecords(isAdmin: boolean = false): Promise<At
         merged.forEach(r => map.set(r.id, r));
         fsRecords.forEach(r => { if (!deletedKeys.includes(r.id)) map.set(r.id, r); });
         merged = Array.from(map.values());
+        isFromCloud = true;
       }
     } catch {}
   }
   merged.sort((a, b) => parseDateToMs(b.created_at) - parseDateToMs(a.created_at));
   saveLocalRecords(merged);
-  return merged as any;
+  // App.tsx membaca res.data dan res.isFromCloud
+  return Object.assign(merged, { data: merged, isFromCloud }) as any;
 }
 
 export function subscribeToAttendanceRecords(callback: (records: AttendanceRecord[], isFromCloud: boolean) => void): () => void {

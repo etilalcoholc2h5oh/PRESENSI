@@ -226,35 +226,58 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
     }
   }, [isFridayReal, studentGender, prayerType]);
 
+  const startIdRef = useRef<number>(0);
+
   const startCamera = async (targetFacing: 'user' | 'environment' = facingMode) => {
+    const myId = ++startIdRef.current;
     try {
       setCameraError(null);
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
       }
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: targetFacing,
           width: { ideal: 640 },
           height: { ideal: 480 },
+          frameRate: { ideal: 24, max: 30 },
         },
         audio: false,
       });
+      // Ada permintaan kamera yang lebih baru: buang stream lama ini
+      if (myId !== startIdRef.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.onloadedmetadata = () => {
-          videoRef.current?.play();
+      const video = videoRef.current;
+      if (video) {
+        video.srcObject = stream;
+        video.onloadedmetadata = () => {
+          video.play().catch(() => {});
           setCameraActive(true);
         };
       }
     } catch (err: any) {
+      if (myId !== startIdRef.current) return;
       console.error('Camera error:', err);
       setCameraError(
         'Kamera tidak dapat diakses. Pastikan izin kamera telah diizinkan pada browser ponsel Anda.'
       );
       setCameraActive(false);
     }
+  };
+
+  // Tunggu sampai video benar-benar punya frame (maks. timeoutMs)
+  const waitForVideoReady = async (timeoutMs = 4000): Promise<boolean> => {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      const v = videoRef.current;
+      if (v && v.readyState >= 2 && v.videoWidth > 0) return true;
+      await new Promise((r) => setTimeout(r, 60));
+    }
+    return false;
   };
 
   const toggleCameraFacing = () => {
@@ -283,6 +306,11 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
     setIsBeRealCapturing(true);
     setBeRealStepMsg('Mengambil foto presensi...');
     try {
+      // Setelah "Foto Ulang", kamera mungkin masih menyala kembali
+      if (!(await waitForVideoReady())) {
+        throw new Error('Kamera belum siap. Coba lagi sebentar.');
+      }
+
       // 1. Shutter sound & visual flash sudut 1 (Wajah Siswa)
       playCameraShutterSound();
       setBeRealFlash(true);
@@ -307,8 +335,9 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
         switchedStream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: { ideal: targetMode },
-            width: { ideal: 800 },
-            height: { ideal: 600 },
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+            frameRate: { ideal: 24, max: 30 },
           },
           audio: false,
         });
@@ -336,7 +365,8 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
         if (switchedStream) {
           switchedStream.getTracks().forEach((t) => t.stop());
         }
-        await startCamera(facingMode);
+        // Nyalakan kamera lagi di latar belakang; preview foto tampil tanpa menunggu
+        void startCamera(facingMode);
       }
 
       if (!frame2) {
