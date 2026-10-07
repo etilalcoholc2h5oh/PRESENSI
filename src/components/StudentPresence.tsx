@@ -612,7 +612,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
       {/* Success Modal */}
       <AnimatePresence>
         {submitSuccessMsg && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/70">
             <motion.div
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -670,7 +670,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
       {/* Error Modal */}
       <AnimatePresence>
         {submitErrorMsg && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/70">
             <motion.div
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -968,7 +968,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
 
             {/* In-Progress Capture Overlay */}
             {isBeRealCapturing && (
-              <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-xs z-30 flex flex-col items-center justify-center p-6 text-center space-y-3">
+              <div className="absolute inset-0 bg-slate-900/90 z-30 flex flex-col items-center justify-center p-6 text-center space-y-3">
                 {countdownSec !== null ? (
                   <motion.div
                     className="w-16 h-16 rounded-full bg-amber-500/30 border-2 border-amber-400 flex items-center justify-center text-white font-black text-3xl shadow-lg"

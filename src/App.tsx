@@ -1,10 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { KeyRound, X, AlertCircle, Lock, Timer } from 'lucide-react';
 import { AttendanceRecord } from './types';
 import { Navbar } from './components/Navbar';
 import { StudentPresence } from './components/StudentPresence';
-import { AdminDashboard } from './components/AdminDashboard';
+// Dashboard admin (xlsx + jspdf) dimuat hanya saat dibuka, supaya halaman siswa cepat tampil
+const AdminDashboard = lazy(() =>
+  import('./components/AdminDashboard').then((m) => ({ default: m.AdminDashboard }))
+);
 import { getAttendanceRecords, subscribeToAttendance } from './services/attendanceService';
 import { MADRASAH_INFO } from './data/madrasahData';
 
@@ -82,32 +85,36 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // Load records on start and on update
-    const loadRecords = async (newRecord?: AttendanceRecord) => {
-        if (newRecord) {
-              setRecentlySubmitted((prev) => {
-                      if (prev.some((r) => r.id === newRecord.id)) return prev;
-                              return [newRecord, ...prev];
-                                    });
-                                        }
-                                            try {
-                                                  const res = await getAttendanceRecords();
-                                                        if (newRecord) {
-                                                                setRecords([newRecord, ...(res.data || []).filter((r) => r.id !== newRecord.id)]);
-                                                                      } else {
-                                                                              setRecords(res.data || []);
-                                                                                    }
-                                                                                          setIsCloudConnected(res.isFromCloud);
-                                                                                              } catch (err) {
-                                                                                                    console.error('Error fetching records:', err);
-                                                                                                        }
-                                                                                                          };
+  // Load records (admin) / catat presensi baru (siswa)
+  const loadRecords = async (newRecord?: AttendanceRecord) => {
+    if (newRecord) {
+      setRecentlySubmitted((prev) => {
+        if (prev.some((r) => r.id === newRecord.id)) return prev;
+        return [newRecord, ...prev];
+      });
+      // Siswa tidak perlu mengunduh ulang 150 data presensi (berisi foto) dari cloud
+      if (activeTab !== 'admin') {
+        setRecords([newRecord]);
+        return;
+      }
+    }
+    try {
+      const res = await getAttendanceRecords(true);
+      const list = res.data || [];
+      if (newRecord) {
+        setRecords([newRecord, ...list.filter((r) => r.id !== newRecord.id)]);
+      } else {
+        setRecords(list);
+      }
+      setIsCloudConnected(Boolean(res.isFromCloud));
+    } catch (err) {
+      console.error('Error fetching records:', err);
+    }
+  };
 
   useEffect(() => {
-    // Selalu muat data presensi agar HP siswa langsung mendeteksi presensi hari ini
-    loadRecords();
-
     if (activeTab === 'admin') {
+      loadRecords();
       const unsubscribe = subscribeToAttendance((updatedRecords) => {
         setRecords(updatedRecords);
         setIsCloudConnected(true);
@@ -236,13 +243,21 @@ export default function App() {
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.25 }}
             >
-              <AdminDashboard
-                records={records}
-                isCloudConnected={isCloudConnected}
-                onRefreshData={loadRecords}
-                adminPin={adminPin}
-                onUpdateAdminPin={handleUpdateAdminPin}
-              />
+              <Suspense
+                fallback={
+                  <div className="p-10 text-center text-sm font-semibold text-slate-500">
+                    Memuat dashboard...
+                  </div>
+                }
+              >
+                <AdminDashboard
+                  records={records}
+                  isCloudConnected={isCloudConnected}
+                  onRefreshData={loadRecords}
+                  adminPin={adminPin}
+                  onUpdateAdminPin={handleUpdateAdminPin}
+                />
+              </Suspense>
             </motion.div>
           )}
         </AnimatePresence>
@@ -253,7 +268,7 @@ export default function App() {
       {/* PIN Authentication Modal for Guru/Admin */}
       <AnimatePresence>
         {pinModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70">
             <motion.div
               initial={{ scale: 0.9, opacity: 0, y: 16 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}

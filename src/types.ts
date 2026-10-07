@@ -26,27 +26,9 @@ export interface AttendanceRecord {
   snapshot_photo?: string;
   notes?: string;
   created_at: string;
-  export interface AttendanceRecord {
-      id: string;
-        name: string;
-          class: string;
-            prayer_type: PrayerType;
-              status: AttendanceStatus;
-                ai_status: string;
-                  ai_confidence?: number;
-                    gps_status: string;
-                      gps_coords?: {
-                          latitude: number;
-                              longitude: number;
-                                };
-                                  gps_distance?: number;
-                                    snapshot_photo?: string;
-                                      notes?: string;
-                                        created_at: string;
-                                          recorded_time?: string;  // ⬅️ SELIPKAN DI SINI
-                                            recorded_date?: string;  // ⬅️ SELIPKAN DI SINI
-                                            }
-  }
+  recorded_time?: string;
+  recorded_date?: string;
+}
 
 export interface GeofenceConfig {
   latitude: number;

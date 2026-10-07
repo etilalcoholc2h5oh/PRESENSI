@@ -51,7 +51,7 @@ export const BeRealPreviewModal: React.FC<BeRealPreviewModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-fade-in">
+    <div className="fixed inset-0 z-50 bg-slate-900/70 flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-fade-in">
       <motion.div
         className="relative bg-white border border-slate-200 rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-4"
         initial={{ scale: 0.9, opacity: 0, y: 20 }}
@@ -97,7 +97,7 @@ export const BeRealPreviewModal: React.FC<BeRealPreviewModalProps> = ({
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={handleSwap}
-              className="absolute bottom-14 right-3 px-3 py-1.5 rounded-full bg-slate-900/85 hover:bg-slate-900 border border-slate-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-md backdrop-blur-xs transition cursor-pointer"
+              className="absolute bottom-14 right-3 px-3 py-1.5 rounded-full bg-slate-900/90 hover:bg-slate-900 border border-slate-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-md transition cursor-pointer"
               title="Tukar foto utama dan foto kecil"
             >
               <ArrowLeftRight className="w-3.5 h-3.5 text-emerald-400" />

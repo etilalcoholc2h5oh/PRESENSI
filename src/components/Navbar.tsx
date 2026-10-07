@@ -26,7 +26,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   };
 
   return (
-    <header className="no-print bg-white/95 backdrop-blur-md border-b border-slate-200 sticky top-0 z-40 shadow-xs">
+    <header className="no-print bg-white border-b border-slate-200 sticky top-0 z-40 shadow-xs">
       <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
         {/* Brand */}
         <div className="flex flex-col text-left">
