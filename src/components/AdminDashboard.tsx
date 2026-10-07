@@ -834,7 +834,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             paginatedRecords.map((rec, idx) => {
                 const safeISO = getSafeDateISOString(rec.created_at);
                   const d = safeISO ? new Date(safeISO) : new Date();
-                    // ⬅️ Menggunakan waktu WIB yang sudah tersimpan
+                    // Menggunakan waktu WIB yang sudah tersimpan
                       const dateStr = rec.recorded_date || d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Jakarta' });
                         let timeStr = rec.recorded_time || (d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' }) + ' WIB');
                           if (!timeStr.endsWith('WIB')) timeStr += ' WIB';
