@@ -832,25 +832,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           ) : (
             paginatedRecords.map((rec, idx) => {
-              const d = new Date(rec.created_at);
-              const dateStr = d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
-              const timeStr = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+                const safeISO = getSafeDateISOString(rec.created_at);
+                  const d = safeISO ? new Date(safeISO) : new Date();
+                    // ⬅️ Menggunakan waktu WIB yang sudah tersimpan
+                      const dateStr = rec.recorded_date || d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Jakarta' });
+                        let timeStr = rec.recorded_time || (d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' }) + ' WIB');
+                          if (!timeStr.endsWith('WIB')) timeStr += ' WIB';
 
-              const isOutside =
-                rec.status === 'Di Luar Radius' ||
-                (rec.gps_status && rec.gps_status.toLowerCase().includes('luar'));
+                            const isOutside =
+                                rec.status === 'Di Luar Radius' ||
+                                    (rec.gps_status && rec.gps_status.toLowerCase().includes('luar'));
 
-              let badgeColor = 'bg-emerald-50 text-emerald-800 border-emerald-200';
-              let badgeLabel = rec.status;
-              if (isOutside) {
-                badgeColor = 'bg-rose-50 text-rose-700 border-rose-300 font-bold';
-                badgeLabel = 'Di Luar Radius';
-              } else if (rec.status === "Halangan Syar'i") {
-                badgeColor = 'bg-purple-50 text-purple-800 border-purple-200';
-              } else if (rec.status === 'Sakit' || rec.status === 'Izin') {
-                badgeColor = 'bg-amber-50 text-amber-800 border-amber-200';
-              }
-
+                                      let badgeColor = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                                        let badgeLabel = rec.status;
+                                          if (isOutside) {
+                                              badgeColor = 'bg-rose-50 text-rose-700 border-rose-300 font-semibold';
+                                                  badgeLabel = 'Di Luar Radius';
+                                                    } else if (rec.status === "Halangan Syar'i") {
+                                                        badgeColor = 'bg-purple-50 text-purple-700 border-purple-200';
+                                                          } else if (rec.status === 'Sakit' || rec.status === 'Izin') {
+                                                              badgeColor = 'bg-amber-50 text-amber-700 border-amber-200';
+                                                                }
+            }
               return (
                 <div
                   key={rec.id ? `${rec.id}-${idx}` : `card-rec-${idx}`}

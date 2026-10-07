@@ -26,9 +26,27 @@ export interface AttendanceRecord {
   snapshot_photo?: string;
   notes?: string;
   created_at: string;
-  recorded_time?: string;  // BARU: Menyimpan jam lokal HP (WIB)
-  recorded_date?: string;  // BARU: Menyimpan tanggal lokal HP
-}
+  export interface AttendanceRecord {
+      id: string;
+        name: string;
+          class: string;
+            prayer_type: PrayerType;
+              status: AttendanceStatus;
+                ai_status: string;
+                  ai_confidence?: number;
+                    gps_status: string;
+                      gps_coords?: {
+                          latitude: number;
+                              longitude: number;
+                                };
+                                  gps_distance?: number;
+                                    snapshot_photo?: string;
+                                      notes?: string;
+                                        created_at: string;
+                                          recorded_time?: string;  // ⬅️ SELIPKAN DI SINI
+                                            recorded_date?: string;  // ⬅️ SELIPKAN DI SINI
+                                            }
+  }
 
 export interface GeofenceConfig {
   latitude: number;

@@ -1,275 +1,231 @@
-import { AttendanceRecord, PrayerType } from '../types';
+import { AttendanceRecord } from '../types';
+import { db } from '../lib/firebase';
+import { collection, addDoc, setDoc, getDocs, deleteDoc, doc, query, orderBy, onSnapshot, Timestamp, limit, updateDoc } from 'firebase/firestore';
 
-const LOCAL_RECORDS_KEY = 'man1_local_attendance_records';
-let memoryRecordsCache: AttendanceRecord[] | null = null;
-
-function saveLocalCache(records: AttendanceRecord[]) {
-  memoryRecordsCache = [...records];
-  try {
-    localStorage.setItem(LOCAL_RECORDS_KEY, JSON.stringify(records));
-  } catch (e) {
-    console.warn('Storage quota warning', e);
+export function parseDateToMs(dateVal: any): number {
+  if (!dateVal) return 0;
+  if (typeof dateVal === 'object' && dateVal.seconds !== undefined) {
+    return dateVal.seconds * 1000;
   }
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('presensi_updated', { detail: records }));
+  if (typeof dateVal === 'object' && typeof dateVal.toDate === 'function') {
+    return dateVal.toDate().getTime();
   }
+  const t = new Date(dateVal).getTime();
+  return isNaN(t) ? 0 : t;
 }
 
-/**
- * Mendapatkan seluruh rekaman presensi langsung dari Server SQL Database Mandiri
- * Bebas dari kuota Firebase!
- */
-export async function getAttendanceRecords(): Promise<{ data: AttendanceRecord[]; isFromCloud: boolean }> {
-  let records: AttendanceRecord[] = [];
-  let isFromCloud = true;
-
-  // 1. Ambil dari Server Database SQL (/api/attendance)
+export function formatRecordDate(dateVal: any): string {
+  if (!dateVal) return '-';
   try {
-    const res = await fetch('/api/attendance', {
-      headers: { Accept: 'application/json' },
-    });
-    if (res.ok) {
-      const result = await res.json();
-      if (result.success && Array.isArray(result.data)) {
-        records = result.data;
-      }
+    let d: Date;
+    if (typeof dateVal === 'object' && dateVal.seconds !== undefined) {
+      d = new Date(dateVal.seconds * 1000);
+    } else if (typeof dateVal === 'object' && typeof dateVal.toDate === 'function') {
+      d = dateVal.toDate();
     } else {
-      isFromCloud = false;
+      d = new Date(dateVal);
     }
-  } catch (err) {
-    console.warn('[SQL-DB] Gagal fetch dari server SQL API, beralih ke cache lokal:', err);
-    isFromCloud = false;
+    if (isNaN(d.getTime())) return '-';
+    // Mengunci ke WIB
+    const dateStr = d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Jakarta' });
+    const timeStr = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' });
+    return `${dateStr}, ${timeStr} WIB`;
+  } catch {
+    return '-';
   }
-
-  // 2. Jika offline / server gagal diakses, baru gunakan cache lokal
-  if (!isFromCloud) {
-    try {
-      const raw = localStorage.getItem(LOCAL_RECORDS_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          records = parsed;
-        }
-      }
-    } catch (e) {
-      // ignore
-    }
-  }
-
-  records.sort((a, b) => {
-    const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
-    const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
-    return tb - ta;
-  });
-
-  if (isFromCloud) {
-    saveLocalCache(records);
-  } else if (records.length > 0) {
-    saveLocalCache(records);
-  }
-
-  return { data: records, isFromCloud };
 }
 
-/**
- * Subscribe pembaruan data secara berkala (Polling Server SQL)
- * Tanpa perlu Firebase onSnapshot!
- */
-export function subscribeToAttendance(callback: (records: AttendanceRecord[]) => void) {
-  // Ambil data pertama kali
-  getAttendanceRecords().then((res) => callback(res.data));
-
-  // Polling server SQL setiap 4 detik untuk update langsung jika ada siswa yang baru absen
-  const intervalId = setInterval(async () => {
-    try {
-      const res = await fetch('/api/attendance', {
-        headers: { Accept: 'application/json' },
-      });
-      if (res.ok) {
-        const result = await res.json();
-        if (result.success && Array.isArray(result.data)) {
-          saveLocalCache(result.data);
-          callback(result.data);
-        }
-      }
-    } catch {
-      // ignore network errors during background polling
+export function getSafeDateISOString(dateVal: any): string {
+  if (!dateVal) return '';
+  try {
+    let d: Date;
+    if (typeof dateVal === 'object' && dateVal.seconds !== undefined) {
+      d = new Date(dateVal.seconds * 1000);
+    } else if (typeof dateVal === 'object' && typeof dateVal.toDate === 'function') {
+      d = dateVal.toDate();
+    } else {
+      d = new Date(dateVal);
     }
-  }, 4000);
+    return isNaN(d.getTime()) ? '' : d.toISOString();
+  } catch {
+    return '';
+  }
+}
 
-  return () => {
-    clearInterval(intervalId);
+const LOCAL_STORAGE_KEY = 'man1_boyolali_attendance_records_v2';
+const DELETED_KEYS_STORAGE = 'man1_boyolali_deleted_keys_v2';
+
+export function getLocalRecords(): AttendanceRecord[] {
+  try {
+    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalRecords(records: AttendanceRecord[]) {
+  try {
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(records));
+  } catch {}
+}
+
+function getDeletedRecordKeys(): string[] {
+  try {
+    const raw = localStorage.getItem(DELETED_KEYS_STORAGE);
+    if (!raw) return [];
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
+}
+
+function addDeletedRecordKey(id: string) {
+  try {
+    const keys = getDeletedRecordKeys();
+    if (!keys.includes(id)) {
+      keys.push(id);
+      localStorage.setItem(DELETED_KEYS_STORAGE, JSON.stringify(keys));
+    }
+  } catch {}
+}
+
+export async function submitAttendanceRecord(record: Omit<AttendanceRecord, 'id' | 'created_at'>): Promise<AttendanceRecord> {
+  const now = new Date();
+  const nowIso = now.toISOString();
+  // Mengunci waktu WIB saat presensi
+  const recorded_time = record.recorded_time || (now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' }) + ' WIB');
+  const recorded_date = record.recorded_date || now.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Jakarta' });
+
+  const finalRecord: AttendanceRecord = {
+    ...record,
+    id: 'att_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+    created_at: nowIso,
+    recorded_time,
+    recorded_date,
   };
-}
 
-/**
- * Mengirim rekaman presensi langsung ke Server SQL Database Mandiri
- */
-export async function submitAttendanceRecord(
-  record: Omit<AttendanceRecord, 'id'>
-): Promise<{ success: boolean; record: AttendanceRecord; isCloud: boolean; message: string }> {
-  try {
-    const res = await fetch('/api/attendance', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify(record),
-    });
+  const local = getLocalRecords();
+  const updatedLocal = [finalRecord, ...local.filter(r => r.id !== finalRecord.id)];
+  saveLocalRecords(updatedLocal);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('presensi_updated', { detail: updatedLocal }));
+  }
 
-    let result: any = null;
+  if (db) {
     try {
-      result = await res.json();
-    } catch {
-      throw new Error(`Server HTTP ${res.status}`);
+      const cleanData: Record<string, any> = {
+        id: finalRecord.id,
+        name: finalRecord.name || '',
+        class: finalRecord.class || '',
+        prayer_type: finalRecord.prayer_type || 'Dhuha',
+        status: finalRecord.status || 'Hadir',
+        created_at: nowIso,
+        createdAt: nowIso,
+        recorded_time,
+        recorded_date,
+        createdAtServer: Timestamp.now(),
+        ai_status: finalRecord.ai_status || 'Manual',
+        ai_confidence: finalRecord.ai_confidence || 100,
+        gps_status: finalRecord.gps_status || 'Valid',
+        notes: finalRecord.notes || '',
+      };
+      if (finalRecord.snapshot_photo) cleanData.snapshot_photo = finalRecord.snapshot_photo;
+      await setDoc(doc(db, 'attendance', finalRecord.id), cleanData);
+    } catch (err: any) {
+      console.warn('Firestore fallback:', err);
     }
-
-    if (!res.ok) {
-      throw new Error(result?.message || `Gagal menyimpan`);
-    }
-
-    const savedRecord = result.record as AttendanceRecord;
-
-    // Perbarui cache lokal
-    const current = memoryRecordsCache || [];
-    saveLocalCache([savedRecord, ...current.filter((r) => r.id !== savedRecord.id)]);
-
-    return {
-      success: true,
-      record: savedRecord,
-      isCloud: true,
-      message: 'Presensi berhasil dicatat (Tersimpan di perangkat & siap disinkronisasi).',
-    };
-  } catch (err: any) {
-    if (err.message && (err.message.includes('sudah') || err.message.includes('tercatat'))) {
-      throw err;
-    }
-
-    console.warn('[SQL-DB] Error POST /api/attendance, simpan ke cache lokal:', err);
-
-    // Fallback simpan lokal jika koneksi server sedang bermasalah
-    const fallbackRecord: AttendanceRecord = {
-      id: `rec-local-${Date.now()}`,
-      ...record,
-      created_at: record.created_at || new Date().toISOString(),
-    };
-
-    const currentRecords = memoryRecordsCache || [];
-    saveLocalCache([fallbackRecord, ...currentRecords]);
-
-    return {
-      success: true,
-      record: fallbackRecord,
-      isCloud: false,
-      message: 'Presensi berhasil dicatat (Tersimpan di perangkat & siap disinkronisasi).',
-    };
   }
+  return finalRecord;
 }
 
-/**
- * Memperbarui status presensi siswa oleh Guru di Server SQL
- */
-export async function updateRecordStatus(
-  id: string,
-  newStatus: AttendanceRecord['status'],
-  notes?: string
-): Promise<boolean> {
-  let isUpdated = false;
-  try {
-    const res = await fetch(`/api/attendance?id=${encodeURIComponent(id)}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, status: newStatus, notes }),
-    });
-    if (res.ok) {
-      isUpdated = true;
-    }
-  } catch (err) {
-    console.warn('Update status server error, updating local:', err);
-  }
+export async function getAttendanceRecords(isAdmin: boolean = false): Promise<AttendanceRecord[] & { data?: AttendanceRecord[]; isFromCloud?: boolean }> {
+  const deletedKeys = getDeletedRecordKeys();
+  const local = getLocalRecords();
+  let merged: AttendanceRecord[] = [...local];
 
-  // Always update local memory and cache
-  try {
-    let current = memoryRecordsCache;
-    if (!current) {
-      const raw = localStorage.getItem(LOCAL_RECORDS_KEY);
-      current = raw ? JSON.parse(raw) : [];
-    }
-    if (Array.isArray(current)) {
-      const updated = current.map((r) =>
-        r.id === id ? { ...r, status: newStatus, notes: notes !== undefined ? notes : r.notes } : r
-      );
-      saveLocalCache(updated);
-      isUpdated = true;
-    }
-  } catch (e) {
-    console.error('Local update error:', e);
+  if (db) {
+    try {
+      const colRef = collection(db, 'attendance');
+      const snapshot = await getDocs(query(colRef, orderBy('created_at', 'desc'), limit(150)));
+      if (!snapshot.empty) {
+        const fsRecords: AttendanceRecord[] = [];
+        snapshot.forEach((docSnap: any) => {
+          const data = docSnap.data() as any;
+          const id = docSnap.id || data.id;
+          let recDate = data.created_at || data.createdAt || new Date().toISOString();
+          fsRecords.push({
+            ...data,
+            id,
+            created_at: recDate,
+            recorded_time: data.recorded_time || (new Date(recDate).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' }) + ' WIB'),
+            recorded_date: data.recorded_date || new Date(recDate).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Jakarta' }),
+            name: data.name || '',
+            class: data.class || '',
+            prayer_type: data.prayer_type || data.prayerType || 'Dhuha',
+            status: data.status || 'Hadir',
+          });
+        });
+        const map = new Map<string, AttendanceRecord>();
+        merged.forEach(r => map.set(r.id, r));
+        fsRecords.forEach(r => { if (!deletedKeys.includes(r.id)) map.set(r.id, r); });
+        merged = Array.from(map.values());
+      }
+    } catch {}
   }
-
-  return isUpdated;
+  merged.sort((a, b) => parseDateToMs(b.created_at) - parseDateToMs(a.created_at));
+  saveLocalRecords(merged);
+  return merged as any;
 }
 
-/**
- * Menghapus satu rekaman presensi dari Server SQL & Cache Lokal
- */
-export async function deleteRecord(id: string): Promise<boolean> {
-  let isDeleted = false;
-  try {
-    const res = await fetch(`/api/attendance?id=${encodeURIComponent(id)}`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id }),
-    });
-    if (res.ok) {
-      isDeleted = true;
-    }
-  } catch (err) {
-    console.warn('Delete record server error, cleaning local cache:', err);
-  }
-
-  // Always clean up local storage & memory cache
-  try {
-    let current = memoryRecordsCache;
-    if (!current) {
-      const raw = localStorage.getItem(LOCAL_RECORDS_KEY);
-      current = raw ? JSON.parse(raw) : [];
-    }
-    if (Array.isArray(current)) {
-      const filtered = current.filter((r) => r.id !== id);
-      saveLocalCache(filtered);
-      isDeleted = true;
-    }
-    // Also remove from last submission session if matching
-    const lastSession = localStorage.getItem('man1_last_submission_session');
-    if (lastSession) {
-      try {
-        const parsed = JSON.parse(lastSession);
-        if (parsed?.id === id) {
-          localStorage.removeItem('man1_last_submission_session');
+export function subscribeToAttendanceRecords(callback: (records: AttendanceRecord[], isFromCloud: boolean) => void): () => void {
+  const deletedKeys = getDeletedRecordKeys();
+  let unsub = () => {};
+  if (db) {
+    const process = (snapshot: any) => {
+      const remote: AttendanceRecord[] = [];
+      snapshot.forEach((docSnap: any) => {
+        const data = docSnap.data() as any;
+        const id = docSnap.id || data.id;
+        if (!deletedKeys.includes(id)) {
+          let recDate = data.created_at || data.createdAt || new Date().toISOString();
+          remote.push({
+            ...data,
+            id,
+            created_at: recDate,
+            recorded_time: data.recorded_time || (new Date(recDate).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' }) + ' WIB'),
+            recorded_date: data.recorded_date || new Date(recDate).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Jakarta' }),
+            name: data.name || '',
+            class: data.class || '',
+            prayer_type: data.prayer_type || data.prayerType || 'Dhuha',
+            status: data.status || 'Hadir',
+          });
         }
-      } catch (e) {}
-    }
-  } catch (e) {
-    console.error('Local cache delete error:', e);
+      });
+      const current = getLocalRecords();
+      const map = new Map<string, AttendanceRecord>();
+      current.forEach(r => map.set(r.id, r));
+      remote.forEach(r => map.set(r.id, r));
+      const combined = Array.from(map.values()).sort((a, b) => parseDateToMs(b.created_at) - parseDateToMs(a.created_at));
+      saveLocalRecords(combined);
+      callback(combined, true);
+    };
+    unsub = onSnapshot(query(collection(db, 'attendance'), orderBy('created_at', 'desc'), limit(150)), process);
   }
-
-  return isDeleted;
+  return unsub;
 }
 
-/**
- * Mengosongkan seluruh data presensi di Server SQL & Cache Lokal
- */
+export async function deleteAttendanceRecord(id: string): Promise<void> {
+  addDeletedRecordKey(id);
+  const updated = getLocalRecords().filter(r => r.id !== id);
+  saveLocalRecords(updated);
+  if (db) try { await deleteDoc(doc(db, 'attendance', id)); } catch {}
+}
+
 export async function deleteAllAttendanceRecords(): Promise<boolean> {
-  try {
-    await fetch('/api/attendance', { method: 'DELETE' });
-  } catch (err) {
-    console.warn('Delete all server error, clearing local cache:', err);
-  }
-  saveLocalCache([]);
-  try {
-    localStorage.removeItem('man1_last_submission_session');
-  } catch (e) {}
+  saveLocalRecords([]);
   return true;
 }
 
-export function getStoredConfig() {
-  return { isConnected: true };
-}
+export const subscribeToAttendance = (callback: (records: AttendanceRecord[]) => void) => subscribeToAttendanceRecords((recs) => callback(recs));

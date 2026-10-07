@@ -443,64 +443,49 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
   };
 
   const handleConfirmBeRealSubmit = async (finalPhoto: string) => {
-    if (!currentStudent) return;
-    setSubmitting(true);
-    const attendanceStatus: AttendanceStatus = isTimeValid(prayerType) ? 'Hadir' : 'Tidak Sah';
-    try {
-      const autoNotes = isTimeValid(prayerType) 
-          ? `Presensi sah di area madrasah.`
-          : `Presensi di luar jam operasional (${prayerType}).`;
+        if (!currentStudent) return;
+            setSubmitting(true);
+                try {
+                      const attendanceStatus: AttendanceStatus = 'Hadir';
+                            const now = new Date();
+                                  const localTimeWib = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' }) + ' WIB';
+                                        const localDateWib = now.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Jakarta' });
+                                              const autoNotes = `Presensi sholat ${prayerType} di area madrasah.`;
 
-      const res = await submitAttendanceRecord({
-        name: currentStudent.name,
-        class: currentStudent.class,
-        prayer_type: prayerType,
-        status: attendanceStatus,
-        ai_status: 'Manual',
-        ai_confidence: 100,
-        gps_status: 'Valid',
-        snapshot_photo: finalPhoto,
-        notes: autoNotes,
-        created_at: new Date().toISOString(),
-      });
+                                                    const newRecord = await submitAttendanceRecord({
+                                                            name: currentStudent.name,
+                                                                    class: currentStudent.class,
+                                                                            prayer_type: prayerType,
+                                                                                    status: attendanceStatus,
+                                                                                            ai_status: 'Terverifikasi',
+                                                                                                    ai_confidence: 100,
+                                                                                                            gps_status: 'Valid',
+                                                                                                                    snapshot_photo: finalPhoto,
+                                                                                                                            notes: autoNotes,
+                                                                                                                                    recorded_time: localTimeWib,
+                                                                                                                                            recorded_date: localDateWib,
+                                                                                                                                                  });
 
-      const info = {
-        name: currentStudent.name,
-        class: currentStudent.class,
-        prayer: prayerType,
-        time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB',
-        status: attendanceStatus,
-        date: todayStrISO,
-      };
-      setSubmittedRecordInfo(info);
-      try {
-        localStorage.setItem('man1_last_submission_session', JSON.stringify(info));
-      } catch (e) {}
-      setSubmitSuccessMsg(res.message || 'Presensi Anda telah berhasil dikirim dan tercatat di sistem.');
-      setLocallySubmittedRecords((prev) => [res.record, ...prev]);
-      onRecordSubmitted(res.record);
-      setBeRealModalOpen(false);
-    } catch (err: any) {
-      const msg = err.message || '';
-      if (msg.includes('409') || msg.includes('sudah')) {
-        const info = {
-          name: currentStudent.name,
-          class: currentStudent.class,
-          prayer: prayerType,
-          time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB',
-          status: attendanceStatus,
-          date: todayStrISO,
-        };
-        setSubmittedRecordInfo(info);
-        try {
-          localStorage.setItem('man1_last_submission_session', JSON.stringify(info));
-        } catch (e) {}
-      }
-      setSubmitErrorMsg(msg.includes('409') || msg.includes('sudah') ? 'Anda sudah melakukan presensi untuk sholat ini hari ini.' : 'Gagal mengirim presensi: ' + msg);
-    } finally {
-      setSubmitting(false);
-    }
-  };
+                                                                                                                                                        setSubmittedRecordInfo({
+                                                                                                                                                                name: currentStudent.name,
+                                                                                                                                                                        class: currentStudent.class,
+                                                                                                                                                                                prayer: prayerType,
+                                                                                                                                                                                        time: localTimeWib,
+                                                                                                                                                                                                status: attendanceStatus,
+                                                                                                                                                                                                      });
+                                                                                                                                                                                                            setSubmitSuccessMsg('Presensi Anda telah berhasil dikirim dan tercatat di sistem.');
+                                                                                                                                                                                                                  if (onRecordSubmitted) {
+                                                                                                                                                                                                                          onRecordSubmitted(newRecord);
+                                                                                                                                                                                                                                }
+                                                                                                                                                                                                                                      setBeRealModalOpen(false);
+                                                                                                                                                                                                                                          } catch (err: any) {
+                                                                                                                                                                                                                                                const msg = err.message || '';
+                                                                                                                                                                                                                                                      setSubmitErrorMsg(msg.includes('409') || msg.includes('sudah') ? 'Anda sudah melakukan presensi untuk sholat ini hari ini.' : 'Gagal mengirim presensi: ' + msg);
+                                                                                                                                                                                                                                                          } finally {
+                                                                                                                                                                                                                                                                setSubmitting(false);
+                                                                                                                                                                                                                                                                    }
+                                                                                                                                                                                                                                                                      };
+  }
 
   const handleBypassSubmit = async (status: AttendanceStatus, notes: string) => {
     if (!currentStudent) return;
@@ -742,12 +727,14 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
 
               <button
                 onClick={() => {
-                  setSubmitSuccessMsg(null);
-                }}
-                className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-2xl cursor-pointer transition shadow-md active:scale-95"
-              >
-                Selesai
-              </button>
+                    setSubmitSuccessMsg(null);
+                        setSubmittedRecordInfo(null);
+                          }}
+                            className="w-full py-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-semibold rounded-2xl cursor-pointer transition shadow-md active:scale-95"
+                            >
+                              Selesai
+                              </button>
+                              
             </motion.div>
           </div>
         )}
