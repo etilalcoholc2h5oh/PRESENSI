@@ -10,15 +10,12 @@ import {
   ChevronLeft,
   ChevronRight,
   Database,
-  Copy,
   Check,
   AlertTriangle,
   AlertCircle,
   Clock,
   MapPin,
-  Camera,
   FileText,
-  User,
 } from 'lucide-react';
 import { AttendanceRecord, AttendanceStatus } from '../types';
 import { CLASSES, MADRASAH_INFO } from '../data/madrasahData';
@@ -30,6 +27,9 @@ import {
   updateRecordStatus,
   deleteRecord,
   deleteAllAttendanceRecords,
+  formatRecordDate,
+  getSafeDateISOString,
+  parseDateToMs,
 } from '../services/attendanceService';
 import {
   getGeofenceConfig,
@@ -38,15 +38,15 @@ import {
 } from '../services/geoService';
 
 interface AdminDashboardProps {
-  records: AttendanceRecord[];
-  isCloudConnected: boolean;
-  onRefreshData: () => void;
+  records?: AttendanceRecord[];
+  isCloudConnected?: boolean;
+  onRefreshData?: () => void;
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
-  records,
-  isCloudConnected,
-  onRefreshData,
+  records = [],
+  isCloudConnected = false,
+  onRefreshData = () => {},
 }) => {
   // Filters State
   const [selectedMonthYear, setSelectedMonthYear] = useState<string>(''); // e.g. "2026-05" for Mei 2026
@@ -168,8 +168,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Filter Data
   const filteredRecords = useMemo(() => {
     return records.filter((rec) => {
-      const recDate = new Date(rec.created_at).toISOString().slice(0, 10);
-      const recMonth = recDate.slice(0, 7); // e.g. "2026-05"
+      const safeISO = getSafeDateISOString(rec.created_at);
+      const recDate = safeISO ? safeISO.slice(0, 10) : '';
+      const recMonth = recDate ? recDate.slice(0, 7) : ''; // e.g. "2026-05"
 
       // Filter Bulan Tertentu (misal: "2026-05" untuk Mei)
       if (selectedMonthYear && recMonth !== selectedMonthYear) return false;
@@ -301,7 +302,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             initial={{ opacity: 0, y: -16 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -16 }}
-            className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-2xl shadow-lg border text-xs font-bold flex items-center gap-2 ${
+            className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-2xl shadow-lg border text-xs font-semibold flex items-center gap-2 ${
               toastMessage.type === 'error'
                 ? 'bg-rose-50 border-rose-200 text-rose-800'
                 : 'bg-emerald-50 border-emerald-200 text-emerald-900'
@@ -320,16 +321,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* Top Banner & Action Controls */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-2 border-b border-slate-200">
         <div>
-          <h2 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
+          <h2 className="text-lg sm:text-xl font-semibold text-slate-900 tracking-tight">
             Dashboard Rekapitulasi Ibadah
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Audit presensi ibadah harian siswa
+            Audit presensi ibadah harian siswa terverifikasi AI dan geofencing GPS
           </p>
         </div>
 
         {/* Buttons: Export Excel, Print PDF, Refresh, Cloud Sync */}
         <div className="no-print flex items-center flex-wrap gap-2">
+          {isCloudConnected ? (
+            <div className="flex items-center gap-1.5 px-3 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-2xl text-xs font-medium shadow-2xs">
+              <Database className="w-4 h-4 text-emerald-600" />
+              <span>Firebase Terhubung</span>
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 px-3 py-2 bg-slate-50 text-slate-500 border border-slate-200 rounded-2xl text-xs font-medium shadow-2xs">
+              <Database className="w-4 h-4 text-slate-400" />
+              <span>Offline / Lokal</span>
+              <span className="w-2 h-2 rounded-full bg-slate-400"></span>
+            </div>
+          )}
+
           <motion.button
             type="button"
             whileHover={{ scale: 1.05, rotate: 180 }}
@@ -346,7 +361,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             whileHover={{ scale: 1.03 }}
             whileTap={{ scale: 0.97 }}
             onClick={handleExportExcel}
-            className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-2xl text-xs font-bold transition shadow-xs cursor-pointer"
+            className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-2xl text-xs font-semibold transition shadow-xs cursor-pointer"
           >
             <span>Excel (.xlsx)</span>
           </motion.button>
@@ -356,17 +371,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             whileHover={{ scale: 1.03 }}
             whileTap={{ scale: 0.97 }}
             onClick={handleExportPdf}
-            className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 rounded-2xl text-xs font-bold transition shadow-xs cursor-pointer"
+            className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 rounded-2xl text-xs font-semibold transition shadow-xs cursor-pointer"
           >
             <span>Cetak PDF</span>
           </motion.button>
+          <button
+            type="button"
+            onClick={handleOpenGeofenceModal}
+            className="p-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-2xl text-xs font-semibold transition cursor-pointer shadow-xs"
+            title="Atur Radius & Lokasi Sekolah"
+          >
+            <MapPin className="w-4 h-4" />
+          </button>
         </div>
       </div>
 
       {/* REKAPITULASI & AUDIT TRAIL */}
       <div className="space-y-5">
-        {/* Database info removed for Firebase */}
-        {/* Printable Header (Only visible during print) */}
+        {/* Printable Header */}
         <div className="hidden print-only text-center mb-6 text-black">
           <h1 className="text-xl font-bold uppercase">{MADRASAH_INFO.name}</h1>
           <p className="text-xs">{MADRASAH_INFO.address}</p>
@@ -385,7 +407,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <button
               type="button"
               onClick={() => setAdminViewTab('records')}
-              className={`px-4 py-2.5 rounded-2xl text-xs font-bold transition cursor-pointer ${
+              className={`px-4 py-2.5 rounded-2xl text-xs font-semibold transition cursor-pointer ${
                 adminViewTab === 'records'
                   ? 'bg-emerald-600 text-white shadow-xs'
                   : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
@@ -396,7 +418,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <button
               type="button"
               onClick={() => setAdminViewTab('unmarked')}
-              className={`px-4 py-2.5 rounded-2xl text-xs font-bold transition cursor-pointer ${
+              className={`px-4 py-2.5 rounded-2xl text-xs font-semibold transition cursor-pointer ${
                 adminViewTab === 'unmarked'
                   ? 'bg-emerald-600 text-white shadow-xs'
                   : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
@@ -409,7 +431,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <button
             type="button"
             onClick={() => setDeleteAllConfirmOpen(true)}
-            className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold rounded-2xl text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-xs shrink-0"
+            className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-semibold rounded-2xl text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-xs shrink-0"
           >
             <Trash2 className="w-4 h-4 text-rose-600" />
             <span>Hapus Semua Data Presensi</span>
@@ -420,13 +442,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-6">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
               <div>
-                <h3 className="text-base font-bold text-slate-900">Rekap Kelas & Daftar Siswa Belum Absen</h3>
+                <h3 className="text-base font-semibold text-slate-900">Rekap Kelas & Daftar Siswa Belum Absen</h3>
                 <p className="text-xs text-slate-500 mt-0.5">Pantau kehadiran harian per kelas secara real-time.</p>
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-600 mb-1">Pilih Kelas:</label>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Pilih Kelas:</label>
                   <select
                     value={rekapClass}
                     onChange={(e) => setRekapClass(e.target.value)}
@@ -439,7 +461,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-600 mb-1">Pilih Sholat:</label>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Pilih Sholat:</label>
                   <select
                     value={rekapPrayer}
                     onChange={(e) => setRekapPrayer(e.target.value)}
@@ -458,10 +480,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               const todayStr = new Date().toDateString();
               const classStudentsList = getStudentsByClass(rekapClass);
               const checkedInToday = records.filter((r) => {
+                const safeISO = getSafeDateISOString(r.created_at);
+                const rDateStr = safeISO ? new Date(safeISO).toDateString() : '';
                 return (
                   r.class === rekapClass &&
                   r.prayer_type === rekapPrayer &&
-                  new Date(r.created_at).toDateString() === todayStr &&
+                  rDateStr === todayStr &&
                   r.status === 'Hadir'
                 );
               });
@@ -473,27 +497,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div className="space-y-6">
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
-                      <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Siswa Terdaftar</span>
-                      <div className="text-2xl font-black text-slate-900 mt-1">{classStudentsList.length} Siswa</div>
+                      <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Total Siswa Terdaftar</span>
+                      <div className="text-2xl font-semibold text-slate-900 mt-1">{classStudentsList.length} Siswa</div>
                     </div>
                     <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4">
-                      <span className="text-xs font-bold text-emerald-700 uppercase tracking-wider">Sudah Melakukan Absen</span>
-                      <div className="text-2xl font-black text-emerald-800 mt-1">{checkedNamesSet.size} Siswa</div>
+                      <span className="text-xs font-medium text-emerald-700 uppercase tracking-wider">Sudah Melakukan Absen</span>
+                      <div className="text-2xl font-semibold text-emerald-800 mt-1">{checkedNamesSet.size} Siswa</div>
                     </div>
                     <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4">
-                      <span className="text-xs font-bold text-rose-700 uppercase tracking-wider">Belum Absen Hari Ini</span>
-                      <div className="text-2xl font-black text-rose-800 mt-1">{uncheckedList.length} Siswa</div>
+                      <span className="text-xs font-medium text-rose-700 uppercase tracking-wider">Belum Absen Hari Ini</span>
+                      <div className="text-2xl font-semibold text-rose-800 mt-1">{uncheckedList.length} Siswa</div>
                     </div>
                   </div>
 
                   {/* Daftar Siswa Belum Absen */}
                   <div>
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-rose-700 mb-3 flex items-center gap-2">
+                    <h4 className="text-xs font-semibold uppercase tracking-wider text-rose-700 mb-3 flex items-center gap-2">
                       <span>Daftar Siswa Kelas {rekapClass} yang BELUM Absen ({rekapPrayer})</span>
                     </h4>
 
                     {uncheckedList.length === 0 ? (
-                      <div className="p-6 rounded-2xl bg-emerald-50 border border-emerald-200 text-center text-emerald-800 text-xs font-bold">
+                      <div className="p-6 rounded-2xl bg-emerald-50 border border-emerald-200 text-center text-emerald-800 text-xs font-medium">
                         Seluruh siswa di kelas {rekapClass} sudah melakukan presensi {rekapPrayer} hari ini.
                       </div>
                     ) : (
@@ -501,12 +525,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         {uncheckedList.map((stu, index) => (
                           <div key={`${stu.class}-${stu.id}-${index}`} className="p-3.5 rounded-2xl bg-rose-50/70 border border-rose-200 flex items-center justify-between gap-2 shadow-xs hover:border-rose-300 transition">
                             <div className="min-w-0">
-                              <div className="text-xs font-bold text-slate-900 truncate">{stu.name}</div>
+                              <div className="text-xs font-semibold text-slate-900 truncate">{stu.name}</div>
                               <div className="text-[11px] text-slate-500 font-medium">
                                 {stu.gender === 'L' ? 'Laki-laki' : 'Perempuan'}
                               </div>
                             </div>
-                            <span className="px-2.5 py-1 rounded-xl bg-rose-200/70 text-rose-800 text-[10px] font-bold shrink-0">
+                            <span className="px-2.5 py-1 rounded-xl bg-rose-200/70 text-rose-800 text-[10px] font-semibold shrink-0">
                               Belum Absen
                             </span>
                           </div>
@@ -521,638 +545,641 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         )}
 
         <div className="space-y-5">
-            {/* Statistics Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          <motion.div
-            className="bg-white border border-slate-200 p-3.5 rounded-3xl shadow-xs"
-            whileHover={{ y: -3, scale: 1.02 }}
-            transition={{ type: 'spring', stiffness: 350, damping: 20 }}
-          >
-            <span className="text-xs font-bold text-slate-500 block">Total Absensi</span>
-            <div className="text-2xl font-black text-slate-900 mt-1">{stats.total}</div>
-            <span className="text-[11px] text-slate-400">Semua rekaman</span>
-          </motion.div>
+          {/* Statistics Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <motion.div
+              className="bg-white border border-slate-200 p-3.5 rounded-3xl shadow-xs"
+              whileHover={{ y: -3, scale: 1.02 }}
+              transition={{ type: 'spring', stiffness: 350, damping: 20 }}
+            >
+              <span className="text-xs font-semibold text-slate-500 block">Total Absensi</span>
+              <div className="text-2xl font-semibold text-slate-900 mt-1">{stats.total}</div>
+              <span className="text-[11px] text-slate-400 font-medium">Semua rekaman</span>
+            </motion.div>
 
-          <motion.div
-            className="bg-white border border-emerald-200/80 p-3.5 rounded-3xl shadow-xs"
-            whileHover={{ y: -3, scale: 1.02 }}
-            transition={{ type: 'spring', stiffness: 350, damping: 20 }}
-          >
-            <span className="text-xs font-bold text-emerald-700 block">Hadir Sah</span>
-            <div className="text-2xl font-black text-emerald-600 mt-1">{stats.hadir}</div>
-            <span className="text-[11px] text-emerald-600">Presensi Sah</span>
-          </motion.div>
+            <motion.div
+              className="bg-white border border-emerald-200/80 p-3.5 rounded-3xl shadow-xs"
+              whileHover={{ y: -3, scale: 1.02 }}
+              transition={{ type: 'spring', stiffness: 350, damping: 20 }}
+            >
+              <span className="text-xs font-semibold text-emerald-700 block">Hadir Sah</span>
+              <div className="text-2xl font-semibold text-emerald-600 mt-1">{stats.hadir}</div>
+              <span className="text-[11px] text-emerald-600 font-medium">Presensi Sah</span>
+            </motion.div>
 
-          <motion.div
-            className="bg-white border border-purple-200/80 p-3.5 rounded-3xl shadow-xs"
-            whileHover={{ y: -3, scale: 1.02 }}
-            transition={{ type: 'spring', stiffness: 350, damping: 20 }}
-          >
-            <span className="text-xs font-bold text-purple-700 block">Halangan Syar'i</span>
-            <div className="text-2xl font-black text-purple-600 mt-1">{stats.haid}</div>
-            <span className="text-[11px] text-purple-600">Dispensasi Siswi</span>
-          </motion.div>
+            <motion.div
+              className="bg-white border border-purple-200/80 p-3.5 rounded-3xl shadow-xs"
+              whileHover={{ y: -3, scale: 1.02 }}
+              transition={{ type: 'spring', stiffness: 350, damping: 20 }}
+            >
+              <span className="text-xs font-semibold text-purple-700 block">Halangan Syar'i</span>
+              <div className="text-2xl font-semibold text-purple-600 mt-1">{stats.haid}</div>
+              <span className="text-[11px] text-purple-600 font-medium">Dispensasi Siswi</span>
+            </motion.div>
 
-          <motion.div
-            className="bg-white border border-amber-200/80 p-3.5 rounded-3xl shadow-xs"
-            whileHover={{ y: -3, scale: 1.02 }}
-            transition={{ type: 'spring', stiffness: 350, damping: 20 }}
-          >
-            <span className="text-xs font-bold text-amber-700 block">Sakit / Izin</span>
-            <div className="text-2xl font-black text-amber-600 mt-1">{stats.sakit}</div>
-            <span className="text-[11px] text-amber-600">Keterangan Khusus</span>
-          </motion.div>
+            <motion.div
+              className="bg-white border border-amber-200/80 p-3.5 rounded-3xl shadow-xs"
+              whileHover={{ y: -3, scale: 1.02 }}
+              transition={{ type: 'spring', stiffness: 350, damping: 20 }}
+            >
+              <span className="text-xs font-semibold text-amber-700 block">Sakit / Izin</span>
+              <div className="text-2xl font-semibold text-amber-600 mt-1">{stats.sakit}</div>
+              <span className="text-[11px] text-amber-600 font-medium">Keterangan Khusus</span>
+            </motion.div>
 
-          <motion.div
-            className="bg-white border border-sky-200/80 p-3.5 rounded-3xl shadow-xs col-span-2 sm:col-span-1"
-            whileHover={{ y: -3, scale: 1.02 }}
-            transition={{ type: 'spring', stiffness: 350, damping: 20 }}
-          >
-            <span className="text-xs font-bold text-sky-700 block">Tingkat Hadir</span>
-            <div className="text-2xl font-black text-sky-600 mt-1">{stats.rate}%</div>
-            <span className="text-[11px] text-sky-600">Hadir Sah Sah</span>
-          </motion.div>
-        </div>
-
-        {/* Filter Panel */}
-        <motion.div
-          className="no-print bg-white border border-slate-200 rounded-3xl p-4 sm:p-5 shadow-xs space-y-3"
-          whileHover={{ y: -2 }}
-          transition={{ type: 'spring', stiffness: 400, damping: 20 }}
-        >
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-              Filter Rekapitulasi Presensi
-            </h4>
-            {/* Quick Preset Buttons */}
-            <div className="flex flex-wrap items-center gap-1.5 text-xs">
-              <span className="text-slate-400 text-[11px]">Preset Cepat:</span>
-              <button
-                type="button"
-                onClick={() => applyDatePreset(0)}
-                className="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-medium transition cursor-pointer"
-              >
-                Hari Ini
-              </button>
-              <button
-                type="button"
-                onClick={() => applyDatePreset(7)}
-                className="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-medium transition cursor-pointer"
-              >
-                7 Hari
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const now = new Date();
-                  const y = now.getFullYear();
-                  const m = String(now.getMonth() + 1).padStart(2, '0');
-                  setSelectedMonthYear(`${y}-${m}`);
-                  setDateRangeStart('');
-                  setDateRangeEnd('');
-                }}
-                className="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-medium transition cursor-pointer"
-              >
-                Bulan Ini
-              </button>
-              <button
-                type="button"
-                onClick={() => applyDatePreset(180)}
-                className="px-2.5 py-1 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 text-[11px] font-semibold transition cursor-pointer"
-              >
-                1 Semester (6 Bulan)
-              </button>
-              <button
-                type="button"
-                onClick={resetFilters}
-                className="px-2.5 py-1 rounded-xl text-rose-600 hover:underline text-[11px] font-semibold ml-2 cursor-pointer"
-              >
-                Reset Filter
-              </button>
-            </div>
+            <motion.div
+              className="bg-white border border-sky-200/80 p-3.5 rounded-3xl shadow-xs col-span-2 sm:col-span-1"
+              whileHover={{ y: -3, scale: 1.02 }}
+              transition={{ type: 'spring', stiffness: 350, damping: 20 }}
+            >
+              <span className="text-xs font-semibold text-sky-700 block">Tingkat Hadir</span>
+              <div className="text-2xl font-semibold text-sky-600 mt-1">{stats.rate}%</div>
+              <span className="text-[11px] text-sky-600 font-medium">Hadir Sah</span>
+            </motion.div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3 text-xs">
-            {/* Filter Bulan Tertentu */}
-            <div className="bg-emerald-50/60 p-2 rounded-2xl border border-emerald-200">
-              <label className="block text-emerald-900 font-bold mb-1 flex items-center justify-between">
-                <span>Pilih Bulan:</span>
-                {selectedMonthYear && (
-                  <button
-                    type="button"
-                    onClick={() => setSelectedMonthYear('')}
-                    className="text-[10px] text-emerald-700 hover:underline cursor-pointer"
-                  >
-                    Hapus
-                  </button>
-                )}
-              </label>
-              <input
-                type="month"
-                value={selectedMonthYear}
-                onChange={(e) => {
-                  setSelectedMonthYear(e.target.value);
-                  if (e.target.value) {
+          {/* Filter Panel */}
+          <motion.div
+            className="no-print bg-white border border-slate-200 rounded-3xl p-4 sm:p-5 shadow-xs space-y-3"
+            whileHover={{ y: -2 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 20 }}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                Filter Rekapitulasi Presensi
+              </h4>
+              {/* Quick Preset Buttons */}
+              <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                <span className="text-slate-400 text-[11px]">Preset Cepat:</span>
+                <button
+                  type="button"
+                  onClick={() => applyDatePreset(0)}
+                  className="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-medium transition cursor-pointer"
+                >
+                  Hari Ini
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyDatePreset(7)}
+                  className="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-medium transition cursor-pointer"
+                >
+                  7 Hari
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const now = new Date();
+                    const y = now.getFullYear();
+                    const m = String(now.getMonth() + 1).padStart(2, '0');
+                    setSelectedMonthYear(`${y}-${m}`);
                     setDateRangeStart('');
                     setDateRangeEnd('');
-                  }
-                }}
-                className="w-full bg-white border border-emerald-300 rounded-xl px-2.5 py-1.5 text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none font-medium cursor-pointer"
-                title="Pilih bulan rekapitulasi (misal Mei 2026)"
-              />
-            </div>
-
-            {/* Tanggal Mulai */}
-            <div>
-              <label className="block text-slate-600 font-bold mb-1">Dari Tanggal:</label>
-              <input
-                type="date"
-                value={dateRangeStart}
-                onChange={(e) => {
-                  setDateRangeStart(e.target.value);
-                  if (e.target.value) setSelectedMonthYear('');
-                }}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-              />
-            </div>
-            {/* Tanggal Sampai */}
-            <div>
-              <label className="block text-slate-600 font-bold mb-1">Sampai Tanggal:</label>
-              <input
-                type="date"
-                value={dateRangeEnd}
-                onChange={(e) => {
-                  setDateRangeEnd(e.target.value);
-                  if (e.target.value) setSelectedMonthYear('');
-                }}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-              />
-            </div>
-            {/* Filter Kelas */}
-            <div>
-              <label className="block text-slate-600 font-bold mb-1">Pilih Kelas:</label>
-              <select
-                value={selectedClass}
-                onChange={(e) => setSelectedClass(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer"
-              >
-                <option value="">Semua Kelas</option>
-                {CLASSES.map((c) => (
-                  <option key={`filter-cls-${c}`} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {/* Filter Sholat */}
-            <div>
-              <label className="block text-slate-600 font-bold mb-1">Jenis Sholat:</label>
-              <select
-                value={selectedPrayer}
-                onChange={(e) => setSelectedPrayer(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer"
-              >
-                <option value="">Semua Sholat</option>
-                <option value="Dhuha">Dhuha</option>
-                <option value="Dzuhur">Dzuhur</option>
-                <option value="Sholat Jumat">Sholat Jumat</option>
-              </select>
-            </div>
-            {/* Filter Status */}
-            <div>
-              <label className="block text-slate-600 font-bold mb-1">Status Kehadiran:</label>
-              <select
-                value={selectedStatus}
-                onChange={(e) => setSelectedStatus(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer"
-              >
-                <option value="">Semua Status</option>
-                <option value="Hadir">Hadir Sah (Dalam Radius)</option>
-                <option value="Di Luar Radius">Di Luar Radius (Tidak Sah)</option>
-                <option value="Halangan Syar'i">Halangan Syar'i</option>
-                <option value="Sakit">Sakit</option>
-                <option value="Izin">Izin</option>
-              </select>
-            </div>
-            {/* Pencarian Nama */}
-            <div>
-              <label className="block text-slate-600 font-bold mb-1">Cari Nama Siswa:</label>
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
-                <input
-                  type="text"
-                  placeholder="Ketik nama..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-8 pr-3 py-2 text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                />
+                  }}
+                  className="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-medium transition cursor-pointer"
+                >
+                  Bulan Ini
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyDatePreset(180)}
+                  className="px-2.5 py-1 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 text-[11px] font-bold transition cursor-pointer"
+                >
+                  1 Semester (6 Bulan)
+                </button>
+                <button
+                  type="button"
+                  onClick={resetFilters}
+                  className="px-2.5 py-1 rounded-xl text-rose-600 hover:underline text-[11px] font-bold ml-2 cursor-pointer"
+                >
+                  Reset Filter
+                </button>
               </div>
             </div>
-          </div>
 
-          {/* Active Filter Indicator / Breadcrumb */}
-          {(selectedMonthYear || selectedClass || dateRangeStart || dateRangeEnd || selectedPrayer || selectedStatus || searchQuery) && (
-            <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-2 text-xs">
-              <span className="text-slate-500 font-medium">Filter Aktif:</span>
-              {selectedMonthYear && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-100/80 text-emerald-900 font-semibold">
-                  <span>Bulan: {selectedMonthYear === '2026-05' ? 'Mei 2026' : selectedMonthYear}</span>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedMonthYear('')}
-                    className="hover:text-emerald-700 cursor-pointer ml-0.5"
-                  >
-                    ×
-                  </button>
-                </span>
-              )}
-              {selectedClass && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-100/80 text-indigo-900 font-semibold">
-                  <span>Kelas: {selectedClass}</span>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedClass('')}
-                    className="hover:text-indigo-700 cursor-pointer ml-0.5"
-                  >
-                    ×
-                  </button>
-                </span>
-              )}
-              {selectedPrayer && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-100/80 text-teal-900 font-semibold">
-                  <span>Sholat: {selectedPrayer}</span>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedPrayer('')}
-                    className="hover:text-teal-700 cursor-pointer ml-0.5"
-                  >
-                    ×
-                  </button>
-                </span>
-              )}
-              {selectedStatus && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-200 text-slate-900 font-semibold">
-                  <span>Status: {selectedStatus}</span>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedStatus('')}
-                    className="hover:text-slate-700 cursor-pointer ml-0.5"
-                  >
-                    ×
-                  </button>
-                </span>
-              )}
-              {(dateRangeStart || dateRangeEnd) && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-100 text-amber-900 font-semibold">
-                  <span>Tgl: {dateRangeStart || '...'} s/d {dateRangeEnd || '...'}</span>
-                  <button
-                    type="button"
-                    onClick={() => {
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3 text-xs">
+              {/* Filter Bulan Tertentu */}
+              <div className="bg-emerald-50/60 p-2 rounded-2xl border border-emerald-200">
+                <label className="block text-emerald-900 font-bold mb-1 flex items-center justify-between">
+                  <span>Pilih Bulan:</span>
+                  {selectedMonthYear && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedMonthYear('')}
+                      className="text-[10px] text-emerald-700 hover:underline cursor-pointer"
+                    >
+                      Hapus
+                    </button>
+                  )}
+                </label>
+                <input
+                  type="month"
+                  value={selectedMonthYear}
+                  onChange={(e) => {
+                    setSelectedMonthYear(e.target.value);
+                    if (e.target.value) {
                       setDateRangeStart('');
                       setDateRangeEnd('');
-                    }}
-                    className="hover:text-amber-700 cursor-pointer ml-0.5"
-                  >
-                    ×
-                  </button>
-                </span>
-              )}
-              <span className="text-slate-400 font-normal ml-auto text-[11px]">
-                Menampilkan <b>{filteredRecords.length}</b> data
-              </span>
-            </div>
-          )}
-        </motion.div>
+                    }
+                  }}
+                  className="w-full bg-white border border-emerald-300 rounded-xl px-2.5 py-1.5 text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none font-bold cursor-pointer"
+                  title="Pilih bulan rekapitulasi"
+                />
+              </div>
 
-        {/* Mobile View: Tampilan Kartu Rekapitulasi Rapi & Responsif (Khusus Layar HP < md) */}
-        <div className="block md:hidden space-y-3">
-          {filteredRecords.length === 0 ? (
-            <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center text-slate-400 text-xs shadow-xs">
-              Tidak ada data presensi yang cocok dengan filter.
-            </div>
-          ) : (
-            paginatedRecords.map((rec, idx) => {
-              const d = new Date(rec.created_at);
-              const dateStr = d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
-              const timeStr = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-
-              const isOutside =
-                rec.status === 'Di Luar Radius' ||
-                (rec.gps_status && rec.gps_status.toLowerCase().includes('luar'));
-
-              let badgeColor = 'bg-emerald-50 text-emerald-800 border-emerald-200';
-              let badgeLabel = rec.status;
-              if (isOutside) {
-                badgeColor = 'bg-rose-50 text-rose-700 border-rose-300 font-bold';
-                badgeLabel = 'Di Luar Radius';
-              } else if (rec.status === "Halangan Syar'i") {
-                badgeColor = 'bg-purple-50 text-purple-800 border-purple-200';
-              } else if (rec.status === 'Sakit' || rec.status === 'Izin') {
-                badgeColor = 'bg-amber-50 text-amber-800 border-amber-200';
-              }
-
-              return (
-                <div
-                  key={rec.id ? `${rec.id}-${idx}` : `card-rec-${idx}`}
-                  className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs flex flex-col gap-3 transition hover:border-slate-300"
+              {/* Dari Tanggal */}
+              <div>
+                <label className="block text-slate-600 font-bold mb-1">Dari Tanggal:</label>
+                <input
+                  type="date"
+                  value={dateRangeStart}
+                  onChange={(e) => {
+                    setDateRangeStart(e.target.value);
+                    if (e.target.value) setSelectedMonthYear('');
+                  }}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                />
+              </div>
+              {/* Sampai Tanggal */}
+              <div>
+                <label className="block text-slate-600 font-bold mb-1">Sampai Tanggal:</label>
+                <input
+                  type="date"
+                  value={dateRangeEnd}
+                  onChange={(e) => {
+                    setDateRangeEnd(e.target.value);
+                    if (e.target.value) setSelectedMonthYear('');
+                  }}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                />
+              </div>
+              {/* Filter Kelas */}
+              <div>
+                <label className="block text-slate-600 font-bold mb-1">Pilih Kelas:</label>
+                <select
+                  value={selectedClass}
+                  onChange={(e) => setSelectedClass(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer"
                 >
-                  {/* Header Kartu: Nama Siswa & Badge Status */}
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <h4 className="font-bold text-slate-900 text-sm leading-snug truncate">{rec.name}</h4>
-                      <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-500">
-                        <span className="font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
-                          {rec.class}
+                  <option value="">Semua Kelas</option>
+                  {CLASSES.map((c) => (
+                    <option key={`filter-cls-${c}`} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {/* Filter Sholat */}
+              <div>
+                <label className="block text-slate-600 font-bold mb-1">Jenis Sholat:</label>
+                <select
+                  value={selectedPrayer}
+                  onChange={(e) => setSelectedPrayer(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer"
+                >
+                  <option value="">Semua Sholat</option>
+                  <option value="Dhuha">Dhuha</option>
+                  <option value="Dzuhur">Dzuhur</option>
+                  <option value="Sholat Jumat">Sholat Jumat</option>
+                </select>
+              </div>
+              {/* Filter Status */}
+              <div>
+                <label className="block text-slate-600 font-bold mb-1">Status Kehadiran:</label>
+                <select
+                  value={selectedStatus}
+                  onChange={(e) => setSelectedStatus(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer"
+                >
+                  <option value="">Semua Status</option>
+                  <option value="Hadir">Hadir Sah (Dalam Radius)</option>
+                  <option value="Di Luar Radius">Di Luar Radius (Tidak Sah)</option>
+                  <option value="Halangan Syar'i">Halangan Syar'i</option>
+                  <option value="Sakit">Sakit</option>
+                  <option value="Izin">Izin</option>
+                </select>
+              </div>
+              {/* Pencarian Nama */}
+              <div>
+                <label className="block text-slate-600 font-bold mb-1">Cari Nama Siswa:</label>
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                  <input
+                    type="text"
+                    placeholder="Ketik nama..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-8 pr-3 py-2 text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Active Filter Indicator */}
+            {(selectedMonthYear || selectedClass || dateRangeStart || dateRangeEnd || selectedPrayer || selectedStatus || searchQuery) && (
+              <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-2 text-xs">
+                <span className="text-slate-500 font-bold">Filter Aktif:</span>
+                {selectedMonthYear && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-100/80 text-emerald-900 font-bold">
+                    <span>Bulan: {selectedMonthYear === '2026-05' ? 'Mei 2026' : selectedMonthYear}</span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedMonthYear('')}
+                      className="hover:text-emerald-700 cursor-pointer ml-0.5"
+                    >
+                      ×
+                    </button>
+                  </span>
+                )}
+                {selectedClass && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-100/80 text-indigo-900 font-bold">
+                    <span>Kelas: {selectedClass}</span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedClass('')}
+                      className="hover:text-indigo-700 cursor-pointer ml-0.5"
+                    >
+                      ×
+                    </button>
+                  </span>
+                )}
+                {selectedPrayer && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-100/80 text-teal-900 font-bold">
+                    <span>Sholat: {selectedPrayer}</span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPrayer('')}
+                      className="hover:text-teal-700 cursor-pointer ml-0.5"
+                    >
+                      ×
+                    </button>
+                  </span>
+                )}
+                {selectedStatus && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-200 text-slate-900 font-bold">
+                    <span>Status: {selectedStatus}</span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedStatus('')}
+                      className="hover:text-slate-700 cursor-pointer ml-0.5"
+                    >
+                      ×
+                    </button>
+                  </span>
+                )}
+                {(dateRangeStart || dateRangeEnd) && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-100 text-amber-900 font-bold">
+                    <span>Tgl: {dateRangeStart || '...'} s/d {dateRangeEnd || '...'}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDateRangeStart('');
+                        setDateRangeEnd('');
+                      }}
+                      className="hover:text-amber-700 cursor-pointer ml-0.5"
+                    >
+                      ×
+                    </button>
+                  </span>
+                )}
+                <span className="text-slate-400 font-bold ml-auto text-[11px]">
+                  Menampilkan <b>{filteredRecords.length}</b> data
+                </span>
+              </div>
+            )}
+          </motion.div>
+
+          {/* Mobile View */}
+          <div className="block md:hidden space-y-3">
+            {filteredRecords.length === 0 ? (
+              <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center text-slate-400 text-xs shadow-xs">
+                Tidak ada data presensi yang cocok dengan filter.
+              </div>
+            ) : (
+              paginatedRecords.map((rec, idx) => {
+                const safeISO = getSafeDateISOString(rec.created_at);
+                const d = safeISO ? new Date(safeISO) : new Date();
+                const dateStr = d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+                const timeStr = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+
+                const isOutside =
+                  rec.status === 'Di Luar Radius' ||
+                  (rec.gps_status && rec.gps_status.toLowerCase().includes('luar'));
+
+                let badgeColor = 'bg-emerald-50 text-emerald-800 border-emerald-200';
+                let badgeLabel = rec.status;
+                if (isOutside) {
+                  badgeColor = 'bg-rose-50 text-rose-700 border-rose-300 font-semibold';
+                  badgeLabel = 'Di Luar Radius';
+                } else if (rec.status === "Halangan Syar'i") {
+                  badgeColor = 'bg-purple-50 text-purple-800 border-purple-200';
+                } else if (rec.status === 'Sakit' || rec.status === 'Izin') {
+                  badgeColor = 'bg-amber-50 text-amber-800 border-amber-200';
+                }
+
+                return (
+                  <div
+                    key={rec.id ? `${rec.id}-${idx}` : `card-rec-${idx}`}
+                    className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs flex flex-col gap-3 transition hover:border-slate-300"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <h4 className="font-bold text-slate-900 text-sm leading-snug truncate">{rec.name}</h4>
+                        <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-500">
+                          <span className="font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
+                            {rec.class}
+                          </span>
+                          <span className="flex items-center gap-1 font-mono text-slate-500">
+                            <Clock className="w-3 h-3 text-slate-400 shrink-0" />
+                            {dateStr}, {timeStr}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100/70 text-emerald-800 border border-emerald-200">
+                          {rec.prayer_type}
                         </span>
-                        <span className="flex items-center gap-1 font-mono text-slate-500">
-                          <Clock className="w-3 h-3 text-slate-400 shrink-0" />
-                          {dateStr}, {timeStr}
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${badgeColor}`}>
+                          {badgeLabel}
                         </span>
                       </div>
                     </div>
 
-                    <div className="flex flex-col items-end gap-1 shrink-0">
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide bg-emerald-100/70 text-emerald-800 border border-emerald-200">
-                        {rec.prayer_type}
-                      </span>
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${badgeColor}`}>
-                        {badgeLabel}
-                      </span>
+                    {rec.snapshot_photo && (
+                      <div className="bg-slate-50 rounded-xl p-2 border border-slate-200/80 text-xs flex items-center justify-between">
+                        <span className="text-slate-500 font-bold">Bukti Foto:</span>
+                        <button
+                          type="button"
+                          onClick={() => setViewPhotoRecord(rec)}
+                          className="text-emerald-700 font-bold hover:underline flex items-center gap-1"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>Lihat Foto</span>
+                        </button>
+                      </div>
+                    )}
+
+                    {rec.notes && (
+                      <div className="text-[11px] text-slate-600 bg-amber-50/60 border border-amber-200/70 rounded-xl px-3 py-2 flex items-start gap-1.5">
+                        <FileText className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                        <span className="break-words leading-relaxed">{rec.notes}</span>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditRecord(rec);
+                          setNewStatus(rec.status);
+                          setEditNotes(rec.notes || '');
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                        <span>Ubah Status</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => promptDeleteRecord(rec.id, rec.name)}
+                        className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                        <span>Hapus</span>
+                      </button>
                     </div>
                   </div>
+                );
+              })
+            )}
+          </div>
 
-                  {/* Verifikasi Foto AI & Lokasi GPS - Layout Terpisah & Lega */}
-                  <div className="bg-slate-50 rounded-xl p-3 border border-slate-200/80 space-y-2.5 text-xs">
-                    {/* Baris Foto & AI */}
-                    <div className="flex items-center justify-between gap-2">
-                    </div>
-                  </div>
-
-                  {/* Keterangan Tambahan jika ada */}
-                  {rec.notes && (
-                    <div className="text-[11px] text-slate-600 bg-amber-50/60 border border-amber-200/70 rounded-xl px-3 py-2 flex items-start gap-1.5">
-                      <FileText className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
-                      <span className="break-words leading-relaxed">{rec.notes}</span>
-                    </div>
-                  )}
-
-                  {/* Footer Kartu: Tombol Aksi Guru */}
-                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditRecord(rec);
-                        setNewStatus(rec.status);
-                        setEditNotes(rec.notes || '');
-                      }}
-                      className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                      <span>Ubah Status</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => promptDeleteRecord(rec.id, rec.name)}
-                      className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
-                    >
-                      <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                      <span>Hapus</span>
-                    </button>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-
-        {/* Desktop View: Tabel Rekapitulasi Rapi & Lega (Layar md ke atas) */}
-        <div className="hidden md:block bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-xs">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse min-w-[1020px]">
-              <thead className="bg-slate-50 text-slate-700 uppercase tracking-wider border-b border-slate-200 text-[11px]">
-                <tr>
-                  <th className="py-4 px-4 font-bold whitespace-nowrap w-36">Waktu Presensi</th>
-                  <th className="py-4 px-4 font-bold whitespace-nowrap w-56">Siswa & Kelas</th>
-                  <th className="py-4 px-4 font-bold whitespace-nowrap w-28">Sholat</th>
-                  <th className="py-4 px-4 font-bold whitespace-nowrap w-36">Status</th>
-                  <th className="py-4 px-4 font-bold whitespace-nowrap w-48">Bukti Foto</th>
-                  <th className="py-4 px-4 font-bold min-w-[160px]">Keterangan</th>
-                  <th className="py-4 px-4 font-bold no-print text-right whitespace-nowrap w-24">Aksi</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-slate-700">
-                {filteredRecords.length === 0 ? (
+          {/* Desktop View */}
+          <div className="hidden md:block bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-xs">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse min-w-[1020px]">
+                <thead className="bg-slate-50 text-slate-700 uppercase tracking-wider border-b border-slate-200 text-[11px]">
                   <tr>
-                    <td colSpan={8} className="py-12 text-center text-slate-400">
-                      Tidak ada data presensi yang cocok dengan filter.
-                    </td>
+                    <th className="py-4 px-4 font-semibold whitespace-nowrap w-36">Waktu Presensi</th>
+                    <th className="py-4 px-4 font-semibold whitespace-nowrap w-56">Siswa & Kelas</th>
+                    <th className="py-4 px-4 font-semibold whitespace-nowrap w-28">Sholat</th>
+                    <th className="py-4 px-4 font-semibold whitespace-nowrap w-36">Status</th>
+                    <th className="py-4 px-4 font-semibold whitespace-nowrap w-48">Bukti Foto</th>
+                    <th className="py-4 px-4 font-semibold min-w-[160px]">Keterangan</th>
+                    <th className="py-4 px-4 font-semibold no-print text-right whitespace-nowrap w-24">Aksi</th>
                   </tr>
-                ) : (
-                  paginatedRecords.map((rec, idx) => {
-                    const d = new Date(rec.created_at);
-                    const dateStr = d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
-                    const timeStr = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-slate-700">
+                  {filteredRecords.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="py-12 text-center text-slate-400">
+                        Tidak ada data presensi yang cocok dengan filter.
+                      </td>
+                    </tr>
+                  ) : (
+                    paginatedRecords.map((rec, idx) => {
+                      const safeISO = getSafeDateISOString(rec.created_at);
+                      const d = safeISO ? new Date(safeISO) : new Date();
+                      const dateStr = d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+                      const timeStr = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
 
-                    const isOutside =
-                      rec.status === 'Di Luar Radius' ||
-                      (rec.gps_status && rec.gps_status.toLowerCase().includes('luar'));
+                      const isOutside =
+                        rec.status === 'Di Luar Radius' ||
+                        (rec.gps_status && rec.gps_status.toLowerCase().includes('luar'));
 
-                    let badgeColor = 'bg-emerald-50 text-emerald-700 border-emerald-200';
-                    let badgeLabel = rec.status;
-                    if (isOutside) {
-                      badgeColor = 'bg-rose-50 text-rose-700 border-rose-300 font-bold';
-                      badgeLabel = 'Di Luar Radius';
-                    } else if (rec.status === "Halangan Syar'i") {
-                      badgeColor = 'bg-purple-50 text-purple-700 border-purple-200';
-                    } else if (rec.status === 'Sakit' || rec.status === 'Izin') {
-                      badgeColor = 'bg-amber-50 text-amber-700 border-amber-200';
-                    }
+                      let badgeColor = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                      let badgeLabel = rec.status;
+                      if (isOutside) {
+                        badgeColor = 'bg-rose-50 text-rose-700 border-rose-300 font-semibold';
+                        badgeLabel = 'Di Luar Radius';
+                      } else if (rec.status === "Halangan Syar'i") {
+                        badgeColor = 'bg-purple-50 text-purple-700 border-purple-200';
+                      } else if (rec.status === 'Sakit' || rec.status === 'Izin') {
+                        badgeColor = 'bg-amber-50 text-amber-700 border-amber-200';
+                      }
 
-                    return (
-                      <tr key={rec.id ? `${rec.id}-${idx}` : `table-rec-${idx}`} className="hover:bg-slate-50/80 transition">
-                        {/* Waktu Presensi */}
-                        <td className="py-4 px-4 whitespace-nowrap text-slate-500 font-mono text-xs">
-                          <div className="font-semibold text-slate-700">{timeStr} WIB</div>
-                          <div className="text-[11px] text-slate-400">{dateStr}</div>
-                        </td>
+                      return (
+                        <tr key={rec.id ? `${rec.id}-${idx}` : `table-rec-${idx}`} className="hover:bg-slate-50/80 transition">
+                          {/* Waktu Presensi */}
+                          <td className="py-4 px-4 whitespace-nowrap text-slate-500 font-mono text-xs">
+                            <div className="font-semibold text-slate-700">{timeStr} WIB</div>
+                            <div className="text-[11px] text-slate-400">{dateStr}</div>
+                          </td>
 
-                        {/* Nama & Kelas */}
-                        <td className="py-4 px-4">
-                          <div className="font-bold text-slate-900 text-xs sm:text-sm leading-snug">{rec.name}</div>
-                          <span className="inline-block mt-0.5 text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
-                            Kelas {rec.class}
-                          </span>
-                        </td>
+                          {/* Nama & Kelas */}
+                          <td className="py-4 px-4">
+                            <div className="font-semibold text-slate-900 text-xs sm:text-sm leading-snug">{rec.name}</div>
+                            <span className="inline-block mt-0.5 text-[10px] font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                              Kelas {rec.class}
+                            </span>
+                          </td>
 
-                        {/* Sholat */}
-                        <td className="py-4 px-4 whitespace-nowrap">
-                          <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                            {rec.prayer_type}
-                          </span>
-                        </td>
+                          {/* Sholat */}
+                          <td className="py-4 px-4 whitespace-nowrap">
+                            <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                              {rec.prayer_type}
+                            </span>
+                          </td>
 
-                        {/* Status */}
-                        <td className="py-4 px-4 whitespace-nowrap">
-                          <span
-                            className={`px-3 py-1 rounded-full text-[11px] font-bold border ${badgeColor}`}
-                          >
-                            {badgeLabel}
-                          </span>
-                        </td>
-
-                        {/* Foto / AI */}
-                        <td className="py-4 px-4 whitespace-nowrap">
-                          {rec.snapshot_photo ? (
-                            <button
-                              type="button"
-                              onClick={() => setViewPhotoRecord(rec)}
-                              className="group flex items-center gap-2.5 text-left hover:opacity-90 cursor-pointer bg-white p-1.5 rounded-xl border border-slate-200 shadow-2xs hover:border-emerald-300 transition"
+                          {/* Status */}
+                          <td className="py-4 px-4 whitespace-nowrap">
+                            <span
+                              className={`px-3 py-1 rounded-full text-[11px] font-semibold border ${badgeColor}`}
                             >
-                              <img
-                                src={rec.snapshot_photo}
-                                alt="Bukti"
-                                className="w-10 h-10 rounded-lg object-cover border border-slate-200 bg-slate-100 group-hover:ring-2 group-hover:ring-emerald-500 transition shadow-2xs shrink-0"
-                              />
-                              <div className="min-w-0">
-                                <div className="text-[11px] text-emerald-700 font-bold flex items-center gap-1 group-hover:underline">
-                                  <Eye className="w-3 h-3" /> Lihat Foto
+                              {badgeLabel}
+                            </span>
+                          </td>
+
+                          {/* Foto / AI */}
+                          <td className="py-4 px-4 whitespace-nowrap">
+                            {rec.snapshot_photo ? (
+                              <button
+                                type="button"
+                                onClick={() => setViewPhotoRecord(rec)}
+                                className="group flex items-center gap-2.5 text-left hover:opacity-90 cursor-pointer bg-white p-1.5 rounded-xl border border-slate-200 shadow-2xs hover:border-emerald-300 transition"
+                              >
+                                <img
+                                  src={rec.snapshot_photo}
+                                  alt="Bukti"
+                                  className="w-10 h-10 rounded-lg object-cover border border-slate-200 bg-slate-100 group-hover:ring-2 group-hover:ring-emerald-500 transition shadow-2xs shrink-0"
+                                />
+                                <div className="min-w-0">
+                                  <div className="text-[11px] text-emerald-700 font-semibold flex items-center gap-1 group-hover:underline">
+                                    <Eye className="w-3 h-3" /> Lihat Foto
+                                  </div>
                                 </div>
-                              </div>
-                            </button>
-                          ) : (
-                            <span className="text-slate-400 text-[11px] italic">
-                              -
-                            </span>
-                          )}
-                        </td>
+                              </button>
+                            ) : (
+                              <span className="text-slate-400 text-[11px] italic">
+                                -
+                              </span>
+                            )}
+                          </td>
 
-                        {/* Keterangan */}
-                        <td className="py-4 px-4 text-slate-600 text-xs">
-                          {rec.notes ? (
-                            <span className="bg-amber-50/70 border border-amber-200/80 text-amber-900 px-2 py-1 rounded-lg inline-block max-w-xs break-words text-[11px]">
-                              {rec.notes}
-                            </span>
-                          ) : (
-                            <span className="text-slate-400 text-[11px]">-</span>
-                          )}
-                        </td>
+                          {/* Keterangan */}
+                          <td className="py-4 px-4 text-slate-600 text-xs">
+                            {rec.notes ? (
+                              <span className="bg-amber-50/70 border border-amber-200/80 text-amber-900 px-2 py-1 rounded-lg inline-block max-w-xs break-words text-[11px]">
+                                {rec.notes}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 text-[11px]">-</span>
+                            )}
+                          </td>
 
-                        {/* Aksi Guru */}
-                        <td className="py-4 px-4 no-print text-right whitespace-nowrap">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <motion.button
-                              type="button"
-                              whileHover={{ scale: 1.1 }}
-                              whileTap={{ scale: 0.9 }}
-                              onClick={() => {
-                                setEditRecord(rec);
-                                setNewStatus(rec.status);
-                                setEditNotes(rec.notes || '');
-                              }}
-                              className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer shadow-2xs"
-                              title="Ubah Status Presensi"
-                            >
-                              <Edit2 className="w-3.5 h-3.5" />
-                            </motion.button>
-                            <motion.button
-                              type="button"
-                              whileHover={{ scale: 1.1 }}
-                              whileTap={{ scale: 0.9 }}
-                              onClick={() => promptDeleteRecord(rec.id, rec.name)}
-                              className="p-2 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-600 transition cursor-pointer shadow-2xs"
-                              title="Hapus Catatan Presensi"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </motion.button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Pagination & Scale Info Bar for 1,000+ Students */}
-        {filteredRecords.length > 0 && (
-          <div className="no-print bg-white border border-slate-200 rounded-3xl p-3.5 sm:px-5 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600 shadow-xs">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span>Menampilkan baris</span>
-              <span className="font-bold text-slate-900">
-                {(currentPage - 1) * pageSize + 1} - {Math.min(currentPage * pageSize, filteredRecords.length)}
-              </span>
-              <span>dari total</span>
-              <span className="font-bold text-emerald-700">{filteredRecords.length}</span>
-              <span>data presensi</span>
-              <span className="text-[11px] text-slate-400 hidden md:inline-block">
-                (Unduh Excel/PDF otomatis mencakup seluruh {filteredRecords.length} data)
-              </span>
+                          {/* Aksi Guru */}
+                          <td className="py-4 px-4 no-print text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <motion.button
+                                type="button"
+                                whileHover={{ scale: 1.1 }}
+                                whileTap={{ scale: 0.9 }}
+                                onClick={() => {
+                                  setEditRecord(rec);
+                                  setNewStatus(rec.status);
+                                  setEditNotes(rec.notes || '');
+                                }}
+                                className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer shadow-2xs"
+                                title="Ubah Status Presensi"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </motion.button>
+                              <motion.button
+                                type="button"
+                                whileHover={{ scale: 1.1 }}
+                                whileTap={{ scale: 0.9 }}
+                                onClick={() => promptDeleteRecord(rec.id, rec.name)}
+                                className="p-2 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-600 transition cursor-pointer shadow-2xs"
+                                title="Hapus Catatan Presensi"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </motion.button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
             </div>
+          </div>
 
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1.5">
-                <span className="text-slate-400 text-[11px]">Tampilkan:</span>
-                <select
-                  value={pageSize}
-                  onChange={(e) => setPageSize(Number(e.target.value))}
-                  className="bg-slate-50 border border-slate-200 rounded-xl px-2 py-1 text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
-                >
-                  <option value={25}>25 baris</option>
-                  <option value={50}>50 baris</option>
-                  <option value={100}>100 baris</option>
-                  <option value={250}>250 baris</option>
-                </select>
-              </div>
-
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  disabled={currentPage <= 1}
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  className="p-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition text-slate-700 cursor-pointer"
-                  title="Halaman Sebelumnya"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <span className="px-2 font-bold text-slate-800 text-xs">
-                  {currentPage} / {totalPages}
+          {/* Pagination */}
+          {filteredRecords.length > 0 && (
+            <div className="no-print bg-white border border-slate-200 rounded-3xl p-3.5 sm:px-5 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600 shadow-xs">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span>Menampilkan baris</span>
+                <span className="font-bold text-slate-900">
+                  {(currentPage - 1) * pageSize + 1} - {Math.min(currentPage * pageSize, filteredRecords.length)}
                 </span>
-                <button
-                  type="button"
-                  disabled={currentPage >= totalPages}
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  className="p-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition text-slate-700 cursor-pointer"
-                  title="Halaman Selanjutnya"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
+                <span>dari total</span>
+                <span className="font-bold text-emerald-700">{filteredRecords.length}</span>
+                <span>data presensi</span>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-slate-400 text-[11px]">Tampilkan:</span>
+                  <select
+                    value={pageSize}
+                    onChange={(e) => setPageSize(Number(e.target.value))}
+                    className="bg-slate-50 border border-slate-200 rounded-xl px-2 py-1 text-xs font-bold text-slate-700 focus:outline-none cursor-pointer"
+                  >
+                    <option value={25}>25 baris</option>
+                    <option value={50}>50 baris</option>
+                    <option value={100}>100 baris</option>
+                    <option value={250}>250 baris</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    disabled={currentPage <= 1}
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    className="p-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition text-slate-700 cursor-pointer"
+                    title="Halaman Sebelumnya"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <span className="px-2 font-bold text-slate-800 text-xs">
+                    {currentPage} / {totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={currentPage >= totalPages}
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    className="p-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition text-slate-700 cursor-pointer"
+                    title="Halaman Selanjutnya"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Signature Block */}
+          <div className="hidden print-only mt-12 pt-8 text-black text-xs">
+            <div className="grid grid-cols-2 gap-8 text-center">
+              <div>
+                <p>Mengetahui,</p>
+                <p className="font-semibold">Kepala Madrasah MAN 1 Boyolali</p>
+                <div className="h-16"></div>
+                <p className="font-semibold underline">Drs. H. Mahsun Alwi, M.Ag.</p>
+                <p>NIP. 19680512 199403 1 002</p>
+              </div>
+              <div>
+                <p>Boyolali, {new Date().toLocaleDateString('id-ID')}</p>
+                <p className="font-semibold">Koordinator Pembina Keagamaan</p>
+                <div className="h-16"></div>
+                <p className="font-semibold underline">Ustadz Muhammad Ilham, S.Pd.I.</p>
+                <p>NIP. 19820315 200901 1 008</p>
               </div>
             </div>
           </div>
-        )}
-
-        {/* Signature Block for Print / PDF */}
-        <div className="hidden print-only mt-12 pt-8 text-black text-xs">
-          <div className="grid grid-cols-2 gap-8 text-center">
-            <div>
-              <p>Mengetahui,</p>
-              <p className="font-bold">Kepala Madrasah MAN 1 Boyolali</p>
-              <div className="h-16"></div>
-              <p className="font-bold underline">Drs. H. Mahsun Alwi, M.Ag.</p>
-              <p>NIP. 19680512 199403 1 002</p>
-            </div>
-            <div>
-              <p>Boyolali, {new Date().toLocaleDateString('id-ID')}</p>
-              <p className="font-bold">Koordinator Pembina Keagamaan</p>
-              <div className="h-16"></div>
-              <p className="font-bold underline">Ustadz Muhammad Ilham, S.Pd.I.</p>
-              <p>NIP. 19820315 200901 1 008</p>
-            </div>
-          </div>
         </div>
-      </div>
       </div>
 
       {/* MODAL VIEW SNAPSHOT PHOTO */}
@@ -1175,7 +1202,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <X className="w-5 h-5" />
             </button>
             <div className="flex items-center gap-2">
-              <h4 className="text-sm font-extrabold text-slate-900">
+              <h4 className="text-sm font-semibold text-slate-900">
                 Bukti Foto: {viewPhotoRecord.name}
               </h4>
             </div>
@@ -1190,12 +1217,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div className="flex justify-between">
                 <span className="text-slate-500">Waktu:</span>
                 <span className="font-mono text-slate-800">
-                  {new Date(viewPhotoRecord.created_at).toLocaleString('id-ID')}
+                  {formatRecordDate(viewPhotoRecord.created_at)}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Kelas & Sholat:</span>
-                <span className="font-bold text-emerald-700">
+                <span className="font-semibold text-emerald-700">
                   {viewPhotoRecord.class} | {viewPhotoRecord.prayer_type}
                 </span>
               </div>
@@ -1213,7 +1240,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             animate={{ scale: 1, opacity: 1 }}
           >
             <div>
-              <h3 className="text-sm font-extrabold text-slate-900">Koreksi Status Presensi</h3>
+              <h3 className="text-sm font-semibold text-slate-900">Koreksi Status Presensi</h3>
               <p className="text-xs text-slate-500 mt-0.5 font-medium">
                 {editRecord.name} ({editRecord.class}) - {editRecord.prayer_type}
               </p>
@@ -1257,7 +1284,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <button
                 type="button"
                 onClick={handleSaveStatusEdit}
-                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs cursor-pointer"
               >
                 Simpan Perubahan
               </button>
@@ -1266,9 +1293,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
 
-      {/* Modal Konfirmasi Hapus Data Presensi Kustom (Aman & Tidak Terblokir oleh Browser/iFrame) */}
-
-      {/* Modal Konfirmasi Hapus Data Presensi Kustom (Aman & Tidak Terblokir oleh Browser/iFrame) */}
+      {/* Modal Konfirmasi Hapus Data Presensi Kustom */}
       <AnimatePresence>
         {deleteConfirmRecord && (
           <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
@@ -1283,7 +1308,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
 
               <div>
-                <h3 className="text-base font-black text-slate-900">Hapus Catatan Presensi?</h3>
+                <h3 className="text-base font-semibold text-slate-900">Hapus Catatan Presensi?</h3>
                 <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
                   Apakah Anda yakin ingin menghapus catatan presensi untuk siswa{' '}
                   <span className="font-bold text-slate-800">"{deleteConfirmRecord.name}"</span>?
@@ -1304,7 +1329,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   type="button"
                   disabled={isDeleting}
                   onClick={confirmDeleteRecord}
-                  className="flex-1 py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
+                  className="flex-1 py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-xs transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
                 >
                   {isDeleting ? (
                     <>
@@ -1345,7 +1370,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <MapPin className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-base font-extrabold text-slate-900">
+                <h3 className="text-base font-semibold text-slate-900">
                   Pengaturan Lokasi GPS & Radius Madrasah
                 </h3>
                 <p className="text-xs text-slate-500 font-medium">
@@ -1380,7 +1405,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 type="button"
                 onClick={handleCalibrateCurrentLocation}
                 disabled={calibratingGps}
-                className="shrink-0 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50"
+                className="shrink-0 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50"
               >
                 {calibratingGps ? (
                   <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -1443,7 +1468,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div className="pt-2">
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="font-bold text-slate-700">Radius Jangkauan Sah:</span>
-                  <span className="px-2.5 py-0.5 rounded-lg bg-indigo-100 text-indigo-800 font-extrabold text-xs">
+                  <span className="px-2.5 py-0.5 rounded-lg bg-indigo-100 text-indigo-800 font-semibold text-xs">
                     {geoConfig.radiusMeters} Meter
                   </span>
                 </div>
@@ -1471,7 +1496,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       onClick={() => setGeoConfig((prev) => ({ ...prev, radiusMeters: 500 }))}
                       className={`px-2 py-0.5 rounded-lg border transition cursor-pointer ${
                         geoConfig.radiusMeters === 500
-                          ? 'bg-indigo-600 text-white border-indigo-600 font-bold'
+                          ? 'bg-indigo-600 text-white border-indigo-600 font-semibold'
                           : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                       }`}
                     >
@@ -1482,18 +1507,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       onClick={() => setGeoConfig((prev) => ({ ...prev, radiusMeters: 800 }))}
                       className={`px-2 py-0.5 rounded-lg border transition cursor-pointer ${
                         geoConfig.radiusMeters === 800
-                          ? 'bg-indigo-600 text-white border-indigo-600 font-bold'
+                          ? 'bg-indigo-600 text-white border-indigo-600 font-semibold'
                           : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                       }`}
                     >
-                      800m (Disarankan)
+                      800m
                     </button>
                     <button
                       type="button"
                       onClick={() => setGeoConfig((prev) => ({ ...prev, radiusMeters: 1000 }))}
                       className={`px-2 py-0.5 rounded-lg border transition cursor-pointer ${
                         geoConfig.radiusMeters === 1000
-                          ? 'bg-indigo-600 text-white border-indigo-600 font-bold'
+                          ? 'bg-indigo-600 text-white border-indigo-600 font-semibold'
                           : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                       }`}
                     >
@@ -1507,7 +1532,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl text-[11px] leading-relaxed text-slate-600 space-y-1">
                 <span className="font-bold text-slate-800 block">Catatan Keabsahan:</span>
                 <p>
-                  Siswa dan guru <b>tidak harus berdiri di karpet mushola atau tengah lapangan</b>. Seluruh area madrasah (Kantor Guru, Ruang Kelas X/XI/XII, Laboratorium, dan Gedung SBSN) otomatis diakui sah jika berada di dalam radius ini.
+                  Siswa dan guru tidak harus berdiri di karpet mushola atau tengah lapangan. Seluruh area madrasah otomatis diakui sah jika berada di dalam radius ini.
                 </p>
               </div>
             </div>
@@ -1523,7 +1548,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <button
                 type="button"
                 onClick={handleSaveGeofence}
-                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs cursor-pointer flex items-center gap-1.5"
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs cursor-pointer flex items-center gap-1.5"
               >
                 <Check className="w-3.5 h-3.5" />
                 <span>Simpan Pengaturan Geofence</span>
@@ -1547,7 +1572,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <AlertCircle className="w-6 h-6" />
               </div>
               <div className="text-center">
-                <h3 className="text-base font-bold text-slate-900">Hapus Seluruh Data Presensi?</h3>
+                <h3 className="text-base font-semibold text-slate-900">Hapus Seluruh Data Presensi?</h3>
                 <p className="text-xs text-slate-500 mt-1">
                   Tindakan ini akan menghapus semua riwayat presensi siswa secara permanen dari server database. Tindakan ini tidak dapat dibatalkan.
                 </p>
@@ -1558,7 +1583,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   type="button"
                   disabled={isDeletingAll}
                   onClick={() => setDeleteAllConfirmOpen(false)}
-                  className="flex-1 py-2.5 rounded-2xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                  className="flex-1 py-2.5 rounded-2xl border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
                 >
                   Batal
                 </button>
@@ -1566,7 +1591,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   type="button"
                   disabled={isDeletingAll}
                   onClick={handleConfirmDeleteAll}
-                  className="flex-1 py-2.5 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs transition cursor-pointer flex items-center justify-center gap-2"
+                  className="flex-1 py-2.5 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-xs transition cursor-pointer flex items-center justify-center gap-2"
                 >
                   {isDeletingAll ? 'Menghapus...' : 'Ya, Hapus Semua'}
                 </button>
