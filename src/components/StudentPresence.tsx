@@ -489,16 +489,135 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
       </motion.div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
-        <motion.div className="lg:col-span-5 bg-white border border-slate-200 rounded-2xl p-3.5 shadow-xs space-y-3">
-           <div>
-             <label className="block text-[11px] font-bold text-slate-700 mb-1">Pilih Kelas</label>
-             <select id="select-kelas-siswa" value={selectedClass} onChange={(e) => { setSelectedClass(e.target.value); setStudentName(''); }} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-medium focus:ring-2 focus:ring-emerald-500">{CLASSES.map(cls => <option key={cls} value={cls}>{cls}</option>)}</select>
-           </div>
-           <div>
-             <label className="block text-[11px] font-bold text-slate-700 mb-1">Pilih Nama Siswa</label>
-             <select id="select-nama-siswa" value={studentName} onChange={(e) => setStudentName(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-medium focus:ring-2 focus:ring-emerald-500"><option value="">-- Pilih Nama Siswa --</option>{classStudents.map(stu => <option key={stu.id} value={stu.name}>{stu.name}</option>)}</select>
-           </div>
-           <button onClick={() => setBypassModalOpen(true)} className="w-full py-2 bg-amber-50 text-amber-700 font-bold rounded-xl border border-amber-200 text-xs transition active:scale-95">Dispensasi / Izin</button>
+        <motion.div className="lg:col-span-5 bg-white border border-slate-200 rounded-3xl p-5 shadow-xs space-y-4">
+          {/* IDENTITAS SISWA */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Identitas Siswa</span>
+              <span className="bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-bold px-2 py-0.5 rounded-full font-sans font-sans">Langkah 1</span>
+            </div>
+            
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Pilih Kelas:</label>
+              <select
+                id="select-kelas-siswa"
+                value={selectedClass}
+                onChange={(e) => {
+                  setSelectedClass(e.target.value);
+                  setStudentName('');
+                }}
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm font-semibold focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all outline-none animate-none"
+              >
+                {CLASSES.map(cls => (
+                  <option key={cls} value={cls}>{cls}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-bold text-slate-700">Nama Lengkap Siswa:</label>
+                <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2.5 py-0.5 rounded-full font-sans font-sans">
+                  {classStudents.length} Siswa
+                </span>
+              </div>
+              <select
+                id="select-nama-siswa"
+                value={studentName}
+                onChange={(e) => setStudentName(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm font-semibold focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all outline-none animate-none"
+              >
+                <option value="">-- Pilih Nama Siswa --</option>
+                {classStudents.map(stu => (
+                  <option key={stu.id} value={stu.name}>{stu.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Jenis Kelamin:</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setStudentGender('L')}
+                  className={`py-3 px-4 rounded-2xl text-xs font-black border transition-all cursor-pointer ${
+                    studentGender === 'L'
+                      ? 'bg-slate-50 border-slate-300 text-slate-700 ring-2 ring-slate-400/5'
+                      : 'bg-white border-slate-100 text-slate-400 hover:bg-slate-50'
+                  }`}
+                >
+                  Laki-laki
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStudentGender('P')}
+                  className={`py-3 px-4 rounded-2xl text-xs font-black border transition-all cursor-pointer ${
+                    studentGender === 'P'
+                      ? 'bg-rose-50 border-rose-300 text-rose-500 shadow-xs'
+                      : 'bg-white border-slate-100 text-slate-400 hover:bg-slate-50'
+                  }`}
+                >
+                  Perempuan
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* PILIHAN SHOLAT */}
+          <div className="space-y-2 pt-2 border-t border-slate-100">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Pilihan Sholat</span>
+            <div className="grid grid-cols-2 gap-2">
+              {(['Dhuha', 'Dzuhur'] as PrayerType[]).map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setPrayerType(p)}
+                  className={`py-3 px-4 rounded-2xl text-xs font-black border transition-all cursor-pointer ${
+                    prayerType === p
+                      ? 'bg-emerald-600 border-emerald-600 text-white shadow-md shadow-emerald-600/10'
+                      : 'bg-white border-slate-100 text-slate-500 hover:bg-slate-50'
+                  }`}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* DISPENSASI KHUSUS (BYPASS) */}
+          <div className="space-y-2 pt-2 border-t border-slate-100">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Dispensasi Khusus (Bypass)</span>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!studentName) {
+                    alert('Silakan pilih nama siswa terlebih dahulu.');
+                    return;
+                  }
+                  // Direct bypass for Haid/Halangan
+                  handleBypassSubmit("Halangan Syar'i", 'Dispensasi Haid (Bypass)');
+                }}
+                className="py-3 px-4 rounded-2xl text-xs font-black border transition-all cursor-pointer bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100/60"
+              >
+                Haid
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!studentName) {
+                    alert('Silakan pilih nama siswa terlebih dahulu.');
+                    return;
+                  }
+                  setBypassType('SakitIzin');
+                  setBypassModalOpen(true);
+                }}
+                className="py-3 px-4 rounded-2xl text-xs font-black border transition-all cursor-pointer bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100/60"
+              >
+                Sakit / Izin
+              </button>
+            </div>
+          </div>
         </motion.div>
 
         <motion.div className="lg:col-span-7 bg-white border border-slate-200 rounded-2xl p-3.5 shadow-xs space-y-3">
