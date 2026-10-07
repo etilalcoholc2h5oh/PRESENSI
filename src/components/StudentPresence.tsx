@@ -486,10 +486,10 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
                 <button
                   type="button"
                   onClick={() => setStudentGender('L')}
-                  className={`py-3 px-4 rounded-2xl text-xs font-medium border transition-all cursor-pointer ${
+                  className={`py-2.5 px-3 rounded-2xl text-xs font-medium border transition-all cursor-pointer text-center ${
                     studentGender === 'L'
-                      ? 'bg-slate-50 border-slate-300 text-slate-700 ring-2 ring-slate-400/5'
-                      : 'bg-white border-slate-100 text-slate-400 hover:bg-slate-50'
+                      ? 'bg-blue-50/80 border-blue-300 text-blue-700 shadow-2xs'
+                      : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
                   }`}
                 >
                   Laki-laki
@@ -497,10 +497,10 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
                 <button
                   type="button"
                   onClick={() => setStudentGender('P')}
-                  className={`py-3 px-4 rounded-2xl text-xs font-medium border transition-all cursor-pointer ${
+                  className={`py-2.5 px-3 rounded-2xl text-xs font-medium border transition-all cursor-pointer text-center ${
                     studentGender === 'P'
-                      ? 'bg-rose-50 border-rose-300 text-rose-500 shadow-xs'
-                      : 'bg-white border-slate-100 text-slate-400 hover:bg-slate-50'
+                      ? 'bg-pink-50/80 border-pink-300 text-pink-700 shadow-2xs'
+                      : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
                   }`}
                 >
                   Perempuan
@@ -632,7 +632,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
                 }}
                 className="w-full py-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-semibold rounded-2xl cursor-pointer transition shadow-md active:scale-95"
               >
-                Selesai / Lanjut Siswa Berikutnya ➔
+                Selesai
               </button>
             </motion.div>
           </div>
