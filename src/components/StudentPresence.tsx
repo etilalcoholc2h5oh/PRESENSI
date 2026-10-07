@@ -16,7 +16,7 @@ import {
   playCameraShutterSound,
   BeRealRenderOptions,
 } from '../services/aiDetector';
-import { submitAttendanceRecord } from '../services/attendanceService';
+import { submitAttendanceRecord, getSafeDateISOString } from '../services/attendanceService';
 import { BypassModal } from './BypassModal';
 import { BeRealPreviewModal } from './BeRealPreviewModal';
 
@@ -233,60 +233,6 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
     };
   }, []);
 
-  useEffect(() => {
-    let isMounted = true;
-    const initAi = async () => {
-      // AI removed - simplified
-    };
-    initAi();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    let isRunning = true;
-    let isDetecting = false;
-    let lastDetectionTime = 0;
-
-    const runLoop = async (timestamp: number) => {
-      if (!isRunning) return;
-      if (
-        videoRef.current &&
-        canvasRef.current &&
-        videoRef.current.readyState >= 2
-      ) {
-        const video = videoRef.current;
-        const canvas = canvasRef.current;
-        if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
-          canvas.width = video.videoWidth || 640;
-          canvas.height = video.videoHeight || 480;
-        }
-
-        const isUserMode = facingMode === 'user';
-
-        if (!isDetecting && timestamp - lastDetectionTime > 500) {
-          isDetecting = true;
-          lastDetectionTime = timestamp;
-        }
-
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-        }
-      }
-      animationFrameRef.current = requestAnimationFrame(runLoop);
-    };
-
-    animationFrameRef.current = requestAnimationFrame(runLoop);
-    return () => {
-      isRunning = false;
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    };
-  }, [facingMode, cameraActive]);
-
   const handleStartCapture = async () => {
     if (!currentStudent || !currentStudent.name) {
       alert('Silakan ketik nama lengkap siswa terlebih dahulu.');
@@ -447,7 +393,9 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
   const isNameValid = studentName.trim().length >= 2;
   const todayStrISO = new Date().toISOString().split('T')[0];
   const hasAlreadySubmittedToday = records.some((r) => {
-    const recordDate = new Date(r.created_at).toISOString().split('T')[0];
+    const safeISO = getSafeDateISOString(r.created_at);
+    if (!safeISO) return false;
+    const recordDate = safeISO.split('T')[0];
     const isSameName = (r.name || '').trim().toLowerCase() === studentName.trim().toLowerCase();
     const isSameClass = (r.class || '').trim().toLowerCase() === selectedClass.trim().toLowerCase();
     const isSamePrayer = r.prayer_type === prayerType;
@@ -473,14 +421,14 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
       >
         <div className="z-10 text-center sm:text-left">
           <div className="flex flex-wrap items-center justify-center sm:justify-start gap-1.5">
-            <span className="text-[10px] font-bold uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded-full">
+            <span className="text-[10px] font-medium uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded-full">
               Sesi {prayerType} {isFridayReal ? '(Jumat)' : ''}
             </span>
             <span className="text-[10px] text-emerald-100 font-medium">
               {todayStr}
             </span>
           </div>
-          <h2 className="text-sm sm:text-base font-black text-white mt-1 tracking-tight">
+          <h2 className="text-sm sm:text-base font-semibold text-white mt-1 tracking-tight">
             Presensi Sholat Berjamaah
           </h2>
         </div>
@@ -491,12 +439,12 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
           {/* IDENTITAS SISWA */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Identitas Siswa</span>
-              <span className="bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-bold px-2 py-0.5 rounded-full font-sans font-sans">Langkah 1</span>
+              <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">Identitas Siswa</span>
+              <span className="bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-medium px-2 py-0.5 rounded-full font-sans">Langkah 1</span>
             </div>
             
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Pilih Kelas:</label>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Pilih Kelas:</label>
               <select
                 id="select-kelas-siswa"
                 value={selectedClass}
@@ -504,7 +452,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
                   setSelectedClass(e.target.value);
                   setStudentName('');
                 }}
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm font-semibold focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all outline-none animate-none"
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all outline-none"
               >
                 {CLASSES.map(cls => (
                   <option key={cls} value={cls}>{cls}</option>
@@ -514,8 +462,8 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
 
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-bold text-slate-700">Nama Lengkap Siswa:</label>
-                <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2.5 py-0.5 rounded-full font-sans font-sans">
+                <label className="text-xs font-medium text-slate-600">Nama Lengkap Siswa:</label>
+                <span className="bg-emerald-100 text-emerald-800 text-[10px] font-medium px-2.5 py-0.5 rounded-full font-sans">
                   {classStudents.length} Siswa
                 </span>
               </div>
@@ -523,7 +471,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
                 id="select-nama-siswa"
                 value={studentName}
                 onChange={(e) => setStudentName(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm font-semibold focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all outline-none animate-none"
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all outline-none animate-none"
               >
                 <option value="">-- Pilih Nama Siswa --</option>
                 {classStudents.map(stu => (
@@ -533,12 +481,12 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Jenis Kelamin:</label>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Jenis Kelamin:</label>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => setStudentGender('L')}
-                  className={`py-3 px-4 rounded-2xl text-xs font-semibold border transition-all cursor-pointer ${
+                  className={`py-3 px-4 rounded-2xl text-xs font-medium border transition-all cursor-pointer ${
                     studentGender === 'L'
                       ? 'bg-slate-50 border-slate-300 text-slate-700 ring-2 ring-slate-400/5'
                       : 'bg-white border-slate-100 text-slate-400 hover:bg-slate-50'
@@ -549,7 +497,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
                 <button
                   type="button"
                   onClick={() => setStudentGender('P')}
-                  className={`py-3 px-4 rounded-2xl text-xs font-semibold border transition-all cursor-pointer ${
+                  className={`py-3 px-4 rounded-2xl text-xs font-medium border transition-all cursor-pointer ${
                     studentGender === 'P'
                       ? 'bg-rose-50 border-rose-300 text-rose-500 shadow-xs'
                       : 'bg-white border-slate-100 text-slate-400 hover:bg-slate-50'
@@ -563,14 +511,14 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
 
           {/* PILIHAN SHOLAT */}
           <div className="space-y-2 pt-2 border-t border-slate-100">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Pilihan Sholat</span>
+            <span className="text-xs font-medium text-slate-400 uppercase tracking-wider block">Pilihan Sholat</span>
             <div className="grid grid-cols-2 gap-2">
               {(['Dhuha', 'Dzuhur'] as PrayerType[]).map((p) => (
                 <button
                   key={p}
                   type="button"
                   onClick={() => setPrayerType(p)}
-                  className={`py-3 px-4 rounded-2xl text-xs font-semibold border transition-all cursor-pointer ${
+                  className={`py-3 px-4 rounded-2xl text-xs font-medium border transition-all cursor-pointer ${
                     prayerType === p
                       ? 'bg-emerald-600 border-emerald-600 text-white shadow-md shadow-emerald-600/10'
                       : 'bg-white border-slate-100 text-slate-500 hover:bg-slate-50'
@@ -584,7 +532,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
 
           {/* DISPENSASI KHUSUS (BYPASS) */}
           <div className="space-y-2 pt-2 border-t border-slate-100">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Dispensasi Khusus (Bypass)</span>
+            <span className="text-xs font-medium text-slate-400 uppercase tracking-wider block">Dispensasi Khusus (Bypass)</span>
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
@@ -593,10 +541,10 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
                     alert('Silakan pilih nama siswa terlebih dahulu.');
                     return;
                   }
-                  // Direct bypass for Haid/Halangan
-                  handleBypassSubmit("Halangan Syar'i", 'Dispensasi Haid (Bypass)');
+                  setBypassType('Halangan');
+                  setBypassModalOpen(true);
                 }}
-                className="py-3 px-4 rounded-2xl text-xs font-semibold border transition-all cursor-pointer bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100/60"
+                className="py-3 px-4 rounded-2xl text-xs font-medium border transition-all cursor-pointer bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100/60"
               >
                 Haid
               </button>
@@ -610,7 +558,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
                   setBypassType('SakitIzin');
                   setBypassModalOpen(true);
                 }}
-                className="py-3 px-4 rounded-2xl text-xs font-semibold border transition-all cursor-pointer bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100/60"
+                className="py-3 px-4 rounded-2xl text-xs font-medium border transition-all cursor-pointer bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100/60"
               >
                 Sakit / Izin
               </button>
@@ -624,7 +572,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
             <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none" />
             <motion.button onClick={toggleCameraFacing} className="absolute top-2 right-2 z-10 p-2 rounded-xl bg-slate-900/80 text-slate-200"><RefreshCw className="w-3.5 h-3.5" /></motion.button>
           </div>
-          <button disabled={isSubmitDisabled} onClick={handleStartCapture} className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-md transition active:scale-95 disabled:opacity-50">
+          <button disabled={isSubmitDisabled} onClick={handleStartCapture} className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium rounded-xl shadow-md transition active:scale-95 disabled:opacity-50">
             Jepret & Kirim Presensi
           </button>
         </motion.div>
@@ -647,7 +595,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
                 <CheckCircle2 className="w-9 h-9" />
               </div>
               <div>
-                <h3 className="font-black text-xl text-slate-900">Presensi Berhasil Terkirim!</h3>
+                <h3 className="font-semibold text-xl text-slate-900">Presensi Berhasil Terkirim!</h3>
                 <p className="text-slate-600 text-xs mt-1 font-medium leading-relaxed">{submitSuccessMsg}</p>
               </div>
 
@@ -655,23 +603,23 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
                 <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 text-left text-xs space-y-1.5 text-slate-700 font-medium">
                   <div className="flex justify-between items-center py-0.5 border-b border-slate-200/60">
                     <span className="text-slate-500">Nama Siswa:</span>
-                    <span className="font-bold text-slate-900">{submittedRecordInfo.name}</span>
+                    <span className="font-semibold text-slate-900">{submittedRecordInfo.name}</span>
                   </div>
                   <div className="flex justify-between items-center py-0.5 border-b border-slate-200/60">
                     <span className="text-slate-500">Kelas:</span>
-                    <span className="font-bold text-slate-900">{submittedRecordInfo.class}</span>
+                    <span className="font-semibold text-slate-900">{submittedRecordInfo.class}</span>
                   </div>
                   <div className="flex justify-between items-center py-0.5 border-b border-slate-200/60">
                     <span className="text-slate-500">Sholat:</span>
-                    <span className="font-bold text-emerald-700">{submittedRecordInfo.prayer}</span>
+                    <span className="font-semibold text-emerald-700">{submittedRecordInfo.prayer}</span>
                   </div>
                   <div className="flex justify-between items-center py-0.5 border-b border-slate-200/60">
                     <span className="text-slate-500">Waktu:</span>
-                    <span className="font-bold text-slate-900">{submittedRecordInfo.time}</span>
+                    <span className="font-semibold text-slate-900">{submittedRecordInfo.time}</span>
                   </div>
                   <div className="flex justify-between items-center py-0.5">
                     <span className="text-slate-500">Status:</span>
-                    <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 text-[11px]">{submittedRecordInfo.status}</span>
+                    <span className="font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 text-[11px]">{submittedRecordInfo.status}</span>
                   </div>
                 </div>
               )}
@@ -682,7 +630,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
                   setSubmittedRecordInfo(null);
                   setStudentName(''); // Siap langsung untuk siswa berikutnya
                 }}
-                className="w-full py-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold rounded-2xl cursor-pointer transition shadow-md active:scale-95"
+                className="w-full py-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-semibold rounded-2xl cursor-pointer transition shadow-md active:scale-95"
               >
                 Selesai / Lanjut Siswa Berikutnya ➔
               </button>
