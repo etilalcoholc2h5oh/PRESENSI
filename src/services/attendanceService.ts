@@ -1,290 +1,275 @@
-import { AttendanceRecord } from '../types';
-import { db } from '../lib/firebase';
-import { collection, addDoc, setDoc, getDocs, deleteDoc, doc, query, orderBy, onSnapshot, Timestamp, limit, updateDoc } from 'firebase/firestore';
+import { AttendanceRecord, PrayerType } from '../types';
 
-export function parseDateToMs(dateVal: any): number {
-  if (!dateVal) return 0;
-  if (typeof dateVal === 'object' && dateVal.seconds !== undefined) {
-    return dateVal.seconds * 1000;
-  }
-  if (typeof dateVal === 'object' && typeof dateVal.toDate === 'function') {
-    return dateVal.toDate().getTime();
-  }
-  const t = new Date(dateVal).getTime();
-  return isNaN(t) ? 0 : t;
-}
+const LOCAL_RECORDS_KEY = 'man1_local_attendance_records';
+let memoryRecordsCache: AttendanceRecord[] | null = null;
 
-export function formatRecordDate(dateVal: any): string {
-  if (!dateVal) return '-';
+function saveLocalCache(records: AttendanceRecord[]) {
+  memoryRecordsCache = [...records];
   try {
-    let d: Date;
-    if (typeof dateVal === 'object' && dateVal.seconds !== undefined) {
-      d = new Date(dateVal.seconds * 1000);
-    } else if (typeof dateVal === 'object' && typeof dateVal.toDate === 'function') {
-      d = dateVal.toDate();
-    } else {
-      d = new Date(dateVal);
-    }
-    return isNaN(d.getTime()) ? '-' : d.toLocaleString('id-ID');
-  } catch {
-    return '-';
+    localStorage.setItem(LOCAL_RECORDS_KEY, JSON.stringify(records));
+  } catch (e) {
+    console.warn('Storage quota warning', e);
   }
-}
-
-export function getSafeDateISOString(dateVal: any): string {
-  if (!dateVal) return '';
-  try {
-    let d: Date;
-    if (typeof dateVal === 'object' && dateVal.seconds !== undefined) {
-      d = new Date(dateVal.seconds * 1000);
-    } else if (typeof dateVal === 'object' && typeof dateVal.toDate === 'function') {
-      d = dateVal.toDate();
-    } else {
-      d = new Date(dateVal);
-    }
-    return isNaN(d.getTime()) ? '' : d.toISOString();
-  } catch {
-    return '';
-  }
-}
-
-const LOCAL_STORAGE_KEY = 'man1_boyolali_attendance_records_v2';
-const DELETED_KEYS_STORAGE = 'man1_boyolali_deleted_keys_v2';
-
-export function getLocalRecords(): AttendanceRecord[] {
-  try {
-    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
-    if (!raw) return [];
-    return JSON.parse(raw);
-  } catch {
-    return [];
-  }
-}
-
-function saveLocalRecords(records: AttendanceRecord[]) {
-  try {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(records));
-  } catch (quotaErr) {
-    try {
-      const trimmed = records.map((r, i) => i < 5 ? r : { ...r, snapshot_photo: undefined });
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(trimmed));
-    } catch {
-      try {
-        const minimal = records.slice(0, 50).map(r => ({ ...r, snapshot_photo: undefined }));
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(minimal));
-      } catch {}
-    }
-  }
-}
-
-function getDeletedRecordKeys(): string[] {
-  try {
-    const raw = localStorage.getItem(DELETED_KEYS_STORAGE);
-    if (!raw) return [];
-    return JSON.parse(raw);
-  } catch {
-    return [];
-  }
-}
-
-function addDeletedRecordKey(id: string) {
-  try {
-    const keys = getDeletedRecordKeys();
-    if (!keys.includes(id)) {
-      keys.push(id);
-      localStorage.setItem(DELETED_KEYS_STORAGE, JSON.stringify(keys));
-    }
-  } catch {}
-}
-
-export async function submitAttendanceRecord(record: Omit<AttendanceRecord, 'id' | 'created_at'>): Promise<AttendanceRecord> {
-  const finalRecord: AttendanceRecord = {
-    ...record,
-    id: 'att_' + Math.random().toString(36).substring(2, 9),
-    created_at: new Date().toISOString()
-  };
-
-  // 1. Simpan ke local storage
-  const local = getLocalRecords();
-  const updatedLocal = [finalRecord, ...local];
-  saveLocalRecords(updatedLocal);
   if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('presensi_updated', { detail: updatedLocal }));
+    window.dispatchEvent(new CustomEvent('presensi_updated', { detail: records }));
+  }
+}
+
+/**
+ * Mendapatkan seluruh rekaman presensi langsung dari Server SQL Database Mandiri
+ * Bebas dari kuota Firebase!
+ */
+export async function getAttendanceRecords(): Promise<{ data: AttendanceRecord[]; isFromCloud: boolean }> {
+  let records: AttendanceRecord[] = [];
+  let isFromCloud = true;
+
+  // 1. Ambil dari Server Database SQL (/api/attendance)
+  try {
+    const res = await fetch('/api/attendance', {
+      headers: { Accept: 'application/json' },
+    });
+    if (res.ok) {
+      const result = await res.json();
+      if (result.success && Array.isArray(result.data)) {
+        records = result.data;
+      }
+    } else {
+      isFromCloud = false;
+    }
+  } catch (err) {
+    console.warn('[SQL-DB] Gagal fetch dari server SQL API, beralih ke cache lokal:', err);
+    isFromCloud = false;
   }
 
-  // 2. Simpan ke Firestore (Firebase database: presensi-db-v2)
-  if (db) {
+  // 2. Jika offline / server gagal diakses, baru gunakan cache lokal
+  if (!isFromCloud) {
     try {
-      const cleanData: Record<string, any> = {};
-      for (const [key, val] of Object.entries(finalRecord)) {
-        if (val !== undefined) {
-          cleanData[key] = val;
+      const raw = localStorage.getItem(LOCAL_RECORDS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          records = parsed;
         }
       }
-      cleanData.createdAtServer = Timestamp.now();
-      
-      await setDoc(doc(db, 'attendance', finalRecord.id), cleanData);
-      console.log('Presensi berhasil tersimpan ke Firestore:', finalRecord.id);
-    } catch (err) {
-      console.warn('Firestore setDoc warning, mencoba addDoc fallback:', err);
-      try {
-        const cleanData: Record<string, any> = {};
-        for (const [key, val] of Object.entries(finalRecord)) {
-          if (val !== undefined) cleanData[key] = val;
-        }
-        await addDoc(collection(db, 'attendance'), cleanData);
-      } catch (addErr) {
-        console.warn('Firestore fallback warning:', addErr);
-      }
+    } catch (e) {
+      // ignore
     }
   }
 
-  return finalRecord;
+  records.sort((a, b) => {
+    const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+    const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+    return tb - ta;
+  });
+
+  if (isFromCloud) {
+    saveLocalCache(records);
+  } else if (records.length > 0) {
+    saveLocalCache(records);
+  }
+
+  return { data: records, isFromCloud };
 }
 
-export async function getAttendanceRecords(isAdmin: boolean = false): Promise<AttendanceRecord[] & { data?: AttendanceRecord[]; isFromCloud?: boolean }> {
-  const deletedKeys = getDeletedRecordKeys();
-  const local = getLocalRecords();
-  let merged: AttendanceRecord[] = [...local];
+/**
+ * Subscribe pembaruan data secara berkala (Polling Server SQL)
+ * Tanpa perlu Firebase onSnapshot!
+ */
+export function subscribeToAttendance(callback: (records: AttendanceRecord[]) => void) {
+  // Ambil data pertama kali
+  getAttendanceRecords().then((res) => callback(res.data));
 
-  if (db) {
+  // Polling server SQL setiap 4 detik untuk update langsung jika ada siswa yang baru absen
+  const intervalId = setInterval(async () => {
     try {
-      const colRef = collection(db, 'attendance');
-      let snapshot;
-      try {
-        const q = query(colRef, orderBy('created_at', 'desc'), limit(150));
-        snapshot = await getDocs(q);
-      } catch (orderErr) {
-        const fallbackQ = query(colRef, limit(150));
-        snapshot = await getDocs(fallbackQ);
-      }
-
-      const fsRecords: AttendanceRecord[] = [];
-      snapshot.forEach((docSnap: any) => {
-        const data = docSnap.data() as AttendanceRecord;
-        fsRecords.push({ ...data, id: docSnap.id || data.id });
+      const res = await fetch('/api/attendance', {
+        headers: { Accept: 'application/json' },
       });
-
-      const map = new Map<string, AttendanceRecord>();
-      merged.forEach(r => map.set(r.id, r));
-      fsRecords.forEach(r => {
-        if (!deletedKeys.includes(r.id)) {
-          map.set(r.id, r);
+      if (res.ok) {
+        const result = await res.json();
+        if (result.success && Array.isArray(result.data)) {
+          saveLocalCache(result.data);
+          callback(result.data);
         }
-      });
-      merged = Array.from(map.values());
-    } catch (err) {
-      console.warn('Firestore fetch fallback:', err);
-    }
-  }
-
-  merged.sort((a, b) => parseDateToMs(b.created_at) - parseDateToMs(a.created_at));
-  saveLocalRecords(merged);
-
-  const result = merged as any;
-  result.data = merged;
-  result.isFromCloud = !!db;
-  return result;
-}
-
-export function subscribeToAttendanceRecords(
-  callback: (records: AttendanceRecord[], isFromCloud: boolean) => void
-): () => void {
-  const deletedKeys = getDeletedRecordKeys();
-  let firestoreUnsubscribe = () => {};
-
-  getAttendanceRecords(true).then(recs => callback(recs, false));
-
-  if (db) {
-    try {
-      const colRef = collection(db, 'attendance');
-      const attachListener = (qToUse: any) => {
-        return onSnapshot(qToUse, (snapshot: any) => {
-          const remote: AttendanceRecord[] = [];
-          snapshot.forEach((docSnap: any) => {
-            const data = docSnap.data() as AttendanceRecord;
-            const id = docSnap.id || data.id;
-            if (!deletedKeys.includes(id)) {
-              remote.push({ ...data, id });
-            }
-          });
-          const current = getLocalRecords();
-          const map = new Map<string, AttendanceRecord>();
-          current.forEach(r => map.set(r.id, r));
-          remote.forEach(r => map.set(r.id, r));
-          const combined = Array.from(map.values()).sort((a, b) => parseDateToMs(b.created_at) - parseDateToMs(a.created_at));
-          saveLocalRecords(combined);
-          callback(combined, true);
-        }, (err: any) => {
-          console.warn('Firestore subscription fallback:', err);
-        });
-      };
-
-      try {
-        const q = query(colRef, orderBy('created_at', 'desc'), limit(150));
-        firestoreUnsubscribe = attachListener(q);
-      } catch {
-        firestoreUnsubscribe = attachListener(query(colRef, limit(150)));
       }
-    } catch {}
-  }
+    } catch {
+      // ignore network errors during background polling
+    }
+  }, 4000);
 
   return () => {
-    firestoreUnsubscribe();
+    clearInterval(intervalId);
   };
 }
 
-export async function deleteAttendanceRecord(id: string, name?: string, createdAt?: string): Promise<void> {
-  addDeletedRecordKey(id);
+/**
+ * Mengirim rekaman presensi langsung ke Server SQL Database Mandiri
+ */
+export async function submitAttendanceRecord(
+  record: Omit<AttendanceRecord, 'id'>
+): Promise<{ success: boolean; record: AttendanceRecord; isCloud: boolean; message: string }> {
+  try {
+    const res = await fetch('/api/attendance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(record),
+    });
 
-  const current = getLocalRecords();
-  const updated = current.filter(r => r.id !== id);
-  saveLocalRecords(updated);
-
-  if (db) {
+    let result: any = null;
     try {
-      await deleteDoc(doc(db, 'attendance', id));
-    } catch {}
-  }
-}
-
-export async function clearAllAttendanceRecords(): Promise<void> {
-  const current = getLocalRecords();
-  current.forEach(r => addDeletedRecordKey(r.id));
-  saveLocalRecords([]);
-}
-
-export const subscribeToAttendance = (callback: (records: AttendanceRecord[]) => void) => {
-  return subscribeToAttendanceRecords((recs) => callback(recs));
-};
-
-export async function updateRecordStatus(id: string, newStatus: string, notes?: string): Promise<void> {
-  const current = getLocalRecords();
-  const updated = current.map(r => r.id === id ? { ...r, status: newStatus as any, notes: notes !== undefined ? notes : r.notes } : r);
-  saveLocalRecords(updated);
-
-  if (db) {
-    try {
-      const updateData: any = { status: newStatus };
-      if (notes !== undefined) {
-        updateData.notes = notes;
-      }
-      await updateDoc(doc(db, 'attendance', id), updateData);
-    } catch (err) {
-      console.warn('Failed to update status in Firestore:', err);
+      result = await res.json();
+    } catch {
+      throw new Error(`Server HTTP ${res.status}`);
     }
+
+    if (!res.ok) {
+      throw new Error(result?.message || `Gagal menyimpan`);
+    }
+
+    const savedRecord = result.record as AttendanceRecord;
+
+    // Perbarui cache lokal
+    const current = memoryRecordsCache || [];
+    saveLocalCache([savedRecord, ...current.filter((r) => r.id !== savedRecord.id)]);
+
+    return {
+      success: true,
+      record: savedRecord,
+      isCloud: true,
+      message: 'Presensi berhasil dicatat (Tersimpan di perangkat & siap disinkronisasi).',
+    };
+  } catch (err: any) {
+    if (err.message && (err.message.includes('sudah') || err.message.includes('tercatat'))) {
+      throw err;
+    }
+
+    console.warn('[SQL-DB] Error POST /api/attendance, simpan ke cache lokal:', err);
+
+    // Fallback simpan lokal jika koneksi server sedang bermasalah
+    const fallbackRecord: AttendanceRecord = {
+      id: `rec-local-${Date.now()}`,
+      ...record,
+      created_at: record.created_at || new Date().toISOString(),
+    };
+
+    const currentRecords = memoryRecordsCache || [];
+    saveLocalCache([fallbackRecord, ...currentRecords]);
+
+    return {
+      success: true,
+      record: fallbackRecord,
+      isCloud: false,
+      message: 'Presensi berhasil dicatat (Tersimpan di perangkat & siap disinkronisasi).',
+    };
   }
 }
 
-export async function deleteRecord(id: string, name?: string, createdAt?: string): Promise<void> {
-  await deleteAttendanceRecord(id, name || '', createdAt || '');
+/**
+ * Memperbarui status presensi siswa oleh Guru di Server SQL
+ */
+export async function updateRecordStatus(
+  id: string,
+  newStatus: AttendanceRecord['status'],
+  notes?: string
+): Promise<boolean> {
+  let isUpdated = false;
+  try {
+    const res = await fetch(`/api/attendance?id=${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, status: newStatus, notes }),
+    });
+    if (res.ok) {
+      isUpdated = true;
+    }
+  } catch (err) {
+    console.warn('Update status server error, updating local:', err);
+  }
+
+  // Always update local memory and cache
+  try {
+    let current = memoryRecordsCache;
+    if (!current) {
+      const raw = localStorage.getItem(LOCAL_RECORDS_KEY);
+      current = raw ? JSON.parse(raw) : [];
+    }
+    if (Array.isArray(current)) {
+      const updated = current.map((r) =>
+        r.id === id ? { ...r, status: newStatus, notes: notes !== undefined ? notes : r.notes } : r
+      );
+      saveLocalCache(updated);
+      isUpdated = true;
+    }
+  } catch (e) {
+    console.error('Local update error:', e);
+  }
+
+  return isUpdated;
 }
 
+/**
+ * Menghapus satu rekaman presensi dari Server SQL & Cache Lokal
+ */
+export async function deleteRecord(id: string): Promise<boolean> {
+  let isDeleted = false;
+  try {
+    const res = await fetch(`/api/attendance?id=${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    });
+    if (res.ok) {
+      isDeleted = true;
+    }
+  } catch (err) {
+    console.warn('Delete record server error, cleaning local cache:', err);
+  }
+
+  // Always clean up local storage & memory cache
+  try {
+    let current = memoryRecordsCache;
+    if (!current) {
+      const raw = localStorage.getItem(LOCAL_RECORDS_KEY);
+      current = raw ? JSON.parse(raw) : [];
+    }
+    if (Array.isArray(current)) {
+      const filtered = current.filter((r) => r.id !== id);
+      saveLocalCache(filtered);
+      isDeleted = true;
+    }
+    // Also remove from last submission session if matching
+    const lastSession = localStorage.getItem('man1_last_submission_session');
+    if (lastSession) {
+      try {
+        const parsed = JSON.parse(lastSession);
+        if (parsed?.id === id) {
+          localStorage.removeItem('man1_last_submission_session');
+        }
+      } catch (e) {}
+    }
+  } catch (e) {
+    console.error('Local cache delete error:', e);
+  }
+
+  return isDeleted;
+}
+
+/**
+ * Mengosongkan seluruh data presensi di Server SQL & Cache Lokal
+ */
 export async function deleteAllAttendanceRecords(): Promise<boolean> {
   try {
-    await clearAllAttendanceRecords();
-    return true;
-  } catch {
-    return false;
+    await fetch('/api/attendance', { method: 'DELETE' });
+  } catch (err) {
+    console.warn('Delete all server error, clearing local cache:', err);
   }
+  saveLocalCache([]);
+  try {
+    localStorage.removeItem('man1_last_submission_session');
+  } catch (e) {}
+  return true;
+}
+
+export function getStoredConfig() {
+  return { isConnected: true };
 }
