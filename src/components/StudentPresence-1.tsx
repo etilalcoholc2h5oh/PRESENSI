@@ -206,9 +206,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
   const beRealOptionsRef = useRef<BeRealRenderOptions | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const animationFrameRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (isFridayReal) {
@@ -273,77 +271,6 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
       }
     };
   }, []);
-
-  useEffect(() => {
-    let isMounted = true;
-    const initAi = async () => {
-      // AI removed - simplified
-    };
-    initAi();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    let isRunning = true;
-    let isDetecting = false;
-    let lastDetectionTime = 0;
-
-    const runLoop = async (timestamp: number) => {
-      if (!isRunning) return;
-      if (
-        videoRef.current &&
-        canvasRef.current &&
-        videoRef.current.readyState >= 2
-      ) {
-        const video = videoRef.current;
-        const canvas = canvasRef.current;
-        if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
-          canvas.width = video.videoWidth || 640;
-          canvas.height = video.videoHeight || 480;
-        }
-
-        const isUserMode = facingMode === 'user';
-
-        // Deteksi background dengan interval sat-set ~500ms (2 frame per detik)
-        // Menjamin HP tidak overheat dan video tetap mulus 60 FPS
-        if (!isDetecting && timestamp - lastDetectionTime > 500) {
-          isDetecting = true;
-          lastDetectionTime = timestamp;
-          /* detectObjects(video)
-            .then((result) => {
-              if (isRunning) {
-                latestDetectionRef.current = result;
-                setLatestDetection(result);
-              }
-            })
-            .catch((err) => {
-              console.warn('Detection error:', err);
-            })
-            .finally(() => {
-              isDetecting = false;
-            }); */
-
-        }
-
-    // Render overlay dan garis scanner secara mulus 60 FPS
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-        }
-      }
-      animationFrameRef.current = requestAnimationFrame(runLoop);
-    };
-
-    animationFrameRef.current = requestAnimationFrame(runLoop);
-    return () => {
-      isRunning = false;
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    };
-  }, [facingMode, cameraActive]);
 
   // Pengambilan foto 2 sudut BeReal (Wajah & Suasana) secara cepat dan otomatis
   const handleStartCapture = async () => {
@@ -485,7 +412,6 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
                                                                                                                                                                                                                                                                 setSubmitting(false);
                                                                                                                                                                                                                                                                     }
                                                                                                                                                                                                                                                                       };
-  }
 
   const handleBypassSubmit = async (status: AttendanceStatus, notes: string) => {
     if (!currentStudent) return;
@@ -653,6 +579,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
     year: 'numeric',
   });
 
+
   return (
     <div className="max-w-5xl mx-auto space-y-5">
       {/* Banner Utama */}
@@ -734,7 +661,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
                             >
                               Selesai
                               </button>
-                              
+
             </motion.div>
           </div>
         )}
@@ -1003,7 +930,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
           </div>
         </motion.div>
 
-        {/* Kolom Kanan: Kamera, AI Overlay, & Submit */}
+        {/* Kolom Kanan: Kamera, & Submit */}
         <motion.div
           className="lg:col-span-7 bg-white border border-slate-200 rounded-3xl p-5 shadow-xs space-y-4"
           whileHover={{ y: -2 }}
@@ -1032,12 +959,6 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
               className={`w-full h-full object-cover ${
                 facingMode === 'user' ? 'scale-x-[-1]' : ''
               }`}
-            />
-
-            {/* Canvas Overlay Bounding Box */}
-            <canvas
-              ref={canvasRef}
-              className="absolute inset-0 w-full h-full pointer-events-none"
             />
 
             {/* Flash Effect */}
