@@ -237,19 +237,11 @@ export default function App() {
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.25 }}
             >
-              <AdminDashboard
-                records={records}
-                isCloudConnected={isCloudConnected}
-                onRefreshData={loadRecords}
-                adminPin={adminPin}
-                onUpdateAdminPin={handleUpdateAdminPin}
-              />
+              <AdminDashboard />
             </motion.div>
           )}
         </AnimatePresence>
       </main>
-
-
 
       {/* PIN Authentication Modal for Guru/Admin */}
       <AnimatePresence>
@@ -421,4 +413,4 @@ export default function App() {
       </AnimatePresence>
     </div>
   );
-}
+    }
