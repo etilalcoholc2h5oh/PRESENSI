@@ -1,6 +1,6 @@
 import { AttendanceRecord } from '../types';
 import { db } from '../lib/firebase';
-import { collection, addDoc, getDocs, deleteDoc, doc, query, orderBy, onSnapshot, Timestamp, limit } from 'firebase/firestore';
+import { collection, addDoc, getDocs, deleteDoc, doc, query, orderBy, onSnapshot, Timestamp, limit, updateDoc } from 'firebase/firestore';
 
 const LOCAL_STORAGE_KEY = 'man1_boyolali_attendance_records_v2';
 const DELETED_KEYS_STORAGE = 'man1_boyolali_deleted_keys_v2';
@@ -171,4 +171,33 @@ export async function clearAllAttendanceRecords(): Promise<void> {
   const current = getLocalRecords();
   current.forEach(r => addDeletedRecordKey(r.id));
   saveLocalRecords([]);
+}
+
+// ==========================================
+// 🛠️ ALIAS FUNGSI UNTUK COCOK DENGAN AdminDashboard.tsx Kakak:
+// ==========================================
+
+// 1. Update status presensi siswa (Hadir, Sakit, Izin, Alangan Syar'i)
+export async function updateRecordStatus(id: string, newStatus: string): Promise<void> {
+  const current = getLocalRecords();
+  const updated = current.map(r => r.id === id ? { ...r, status: newStatus as any } : r);
+  saveLocalRecords(updated);
+
+  if (navigator.onLine && db) {
+    try {
+      await updateDoc(doc(db, 'attendance', id), { status: newStatus });
+    } catch (err) {
+      console.warn('Failed to update status in Firestore:', err);
+    }
+  }
+}
+
+// 2. Penghapusan data presensi tunggal
+export async function deleteRecord(id: string, name: string, createdAt: string): Promise<void> {
+  await deleteAttendanceRecord(id, name, createdAt);
+}
+
+// 3. Pembersihan seluruh data di layar
+export async function deleteAllAttendanceRecords(): Promise<void> {
+  await clearAllAttendanceRecords();
 }
