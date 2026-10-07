@@ -83,26 +83,25 @@ export default function App() {
   }, []);
 
   // Load records on start and on update
-  const loadRecords = async (newRecord?: AttendanceRecord) => {
-    if (newRecord) {
-      setRecentlySubmitted((prev) => {
-        if (prev.some((r) => r.id === newRecord.id)) return prev;
-        return [newRecord, ...prev];
-      });
-    }
-    try {
-      const isTeacher = activeTab === 'admin';
-      const res = await getAttendanceRecords(isTeacher);
-      if (newRecord) {
-        setRecords([newRecord, ...(res.data || []).filter((r) => r.id !== newRecord.id)]);
-      } else {
-        setRecords(res.data || []);
-      }
-      setIsCloudConnected(!!res.isFromCloud);
-    } catch (err) {
-      console.error('Error fetching records:', err);
-    }
-  };
+    const loadRecords = async (newRecord?: AttendanceRecord) => {
+        if (newRecord) {
+              setRecentlySubmitted((prev) => {
+                      if (prev.some((r) => r.id === newRecord.id)) return prev;
+                              return [newRecord, ...prev];
+                                    });
+                                        }
+                                            try {
+                                                  const res = await getAttendanceRecords();
+                                                        if (newRecord) {
+                                                                setRecords([newRecord, ...(res.data || []).filter((r) => r.id !== newRecord.id)]);
+                                                                      } else {
+                                                                              setRecords(res.data || []);
+                                                                                    }
+                                                                                          setIsCloudConnected(res.isFromCloud);
+                                                                                              } catch (err) {
+                                                                                                    console.error('Error fetching records:', err);
+                                                                                                        }
+                                                                                                          };
 
   useEffect(() => {
     // Selalu muat data presensi agar HP siswa langsung mendeteksi presensi hari ini
@@ -237,11 +236,19 @@ export default function App() {
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.25 }}
             >
-              <AdminDashboard />
+              <AdminDashboard
+                records={records}
+                isCloudConnected={isCloudConnected}
+                onRefreshData={loadRecords}
+                adminPin={adminPin}
+                onUpdateAdminPin={handleUpdateAdminPin}
+              />
             </motion.div>
           )}
         </AnimatePresence>
       </main>
+
+
 
       {/* PIN Authentication Modal for Guru/Admin */}
       <AnimatePresence>
@@ -413,4 +420,4 @@ export default function App() {
       </AnimatePresence>
     </div>
   );
-    }
+}
