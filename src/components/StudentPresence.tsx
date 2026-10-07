@@ -90,11 +90,9 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
         try {
           localStorage.removeItem('man1_last_student_name');
         } catch (e) {}
-      } else if (found.gender !== studentGender) {
-        setStudentGender(found.gender);
       }
     }
-  }, [classStudents, studentName, studentGender]);
+  }, [classStudents, studentName]);
 
   const foundStudent = classStudents.find((s) => s.name === studentName);
   const currentStudent: Student = {
@@ -529,7 +527,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
               >
                 <option value="">-- Pilih Nama Siswa --</option>
                 {classStudents.map(stu => (
-                  <option key={stu.id} value={stu.name}>{stu.name}</option>
+                  <option key={stu.id} value={stu.name}>{stu.name} ({stu.gender})</option>
                 ))}
               </select>
             </div>
@@ -540,7 +538,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
                 <button
                   type="button"
                   onClick={() => setStudentGender('L')}
-                  className={`py-3 px-4 rounded-2xl text-xs font-bold border transition-all cursor-pointer ${
+                  className={`py-3 px-4 rounded-2xl text-xs font-semibold border transition-all cursor-pointer ${
                     studentGender === 'L'
                       ? 'bg-slate-50 border-slate-300 text-slate-700 ring-2 ring-slate-400/5'
                       : 'bg-white border-slate-100 text-slate-400 hover:bg-slate-50'
@@ -551,7 +549,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
                 <button
                   type="button"
                   onClick={() => setStudentGender('P')}
-                  className={`py-3 px-4 rounded-2xl text-xs font-bold border transition-all cursor-pointer ${
+                  className={`py-3 px-4 rounded-2xl text-xs font-semibold border transition-all cursor-pointer ${
                     studentGender === 'P'
                       ? 'bg-rose-50 border-rose-300 text-rose-500 shadow-xs'
                       : 'bg-white border-slate-100 text-slate-400 hover:bg-slate-50'
@@ -572,7 +570,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
                   key={p}
                   type="button"
                   onClick={() => setPrayerType(p)}
-                  className={`py-3 px-4 rounded-2xl text-xs font-bold border transition-all cursor-pointer ${
+                  className={`py-3 px-4 rounded-2xl text-xs font-semibold border transition-all cursor-pointer ${
                     prayerType === p
                       ? 'bg-emerald-600 border-emerald-600 text-white shadow-md shadow-emerald-600/10'
                       : 'bg-white border-slate-100 text-slate-500 hover:bg-slate-50'
@@ -598,7 +596,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
                   // Direct bypass for Haid/Halangan
                   handleBypassSubmit("Halangan Syar'i", 'Dispensasi Haid (Bypass)');
                 }}
-                className="py-3 px-4 rounded-2xl text-xs font-bold border transition-all cursor-pointer bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100/60"
+                className="py-3 px-4 rounded-2xl text-xs font-semibold border transition-all cursor-pointer bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100/60"
               >
                 Haid
               </button>
@@ -612,7 +610,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
                   setBypassType('SakitIzin');
                   setBypassModalOpen(true);
                 }}
-                className="py-3 px-4 rounded-2xl text-xs font-bold border transition-all cursor-pointer bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100/60"
+                className="py-3 px-4 rounded-2xl text-xs font-semibold border transition-all cursor-pointer bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100/60"
               >
                 Sakit / Izin
               </button>
