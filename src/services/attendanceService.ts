@@ -1,275 +1,233 @@
-import { AttendanceRecord, PrayerType } from '../types';
+import { AttendanceRecord } from '../types';
+import { db } from '../lib/firebase';
+import { collection, addDoc, getDocs, deleteDoc, doc, query, orderBy, onSnapshot, Timestamp, limit } from 'firebase/firestore';
+import { sendRecordToGoogleSheet, fetchRecordsFromGoogleSheet } from './googleSheetService';
+import { sendRecordToCloudRelay, sendDeleteToCloudRelay, fetchRecordsFromCloudRelay, subscribeToCloudRelay } from './cloudRelayService';
 
-const LOCAL_RECORDS_KEY = 'man1_local_attendance_records';
-let memoryRecordsCache: AttendanceRecord[] | null = null;
+const LOCAL_STORAGE_KEY = 'man1_boyolali_attendance_records_v2';
+const DELETED_KEYS_STORAGE = 'man1_boyolali_deleted_keys_v2';
 
-function saveLocalCache(records: AttendanceRecord[]) {
-  memoryRecordsCache = [...records];
+export function getLocalRecords(): AttendanceRecord[] {
   try {
-    localStorage.setItem(LOCAL_RECORDS_KEY, JSON.stringify(records));
-  } catch (e) {
-    console.warn('Storage quota warning', e);
-  }
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('presensi_updated', { detail: records }));
+    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw);
+  } catch {
+    return [];
   }
 }
 
-/**
- * Mendapatkan seluruh rekaman presensi langsung dari Server SQL Database Mandiri
- * Bebas dari kuota Firebase!
- */
-export async function getAttendanceRecords(): Promise<{ data: AttendanceRecord[]; isFromCloud: boolean }> {
-  let records: AttendanceRecord[] = [];
-  let isFromCloud = true;
-
-  // 1. Ambil dari Server Database SQL (/api/attendance)
+function saveLocalRecords(records: AttendanceRecord[]) {
   try {
-    const res = await fetch('/api/attendance', {
-      headers: { Accept: 'application/json' },
-    });
-    if (res.ok) {
-      const result = await res.json();
-      if (result.success && Array.isArray(result.data)) {
-        records = result.data;
-      }
-    } else {
-      isFromCloud = false;
-    }
-  } catch (err) {
-    console.warn('[SQL-DB] Gagal fetch dari server SQL API, beralih ke cache lokal:', err);
-    isFromCloud = false;
-  }
-
-  // 2. Jika offline / server gagal diakses, baru gunakan cache lokal
-  if (!isFromCloud) {
-    try {
-      const raw = localStorage.getItem(LOCAL_RECORDS_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          records = parsed;
-        }
-      }
-    } catch (e) {
-      // ignore
-    }
-  }
-
-  records.sort((a, b) => {
-    const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
-    const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
-    return tb - ta;
-  });
-
-  if (isFromCloud) {
-    saveLocalCache(records);
-  } else if (records.length > 0) {
-    saveLocalCache(records);
-  }
-
-  return { data: records, isFromCloud };
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(records));
+  } catch {}
 }
 
-/**
- * Subscribe pembaruan data secara berkala (Polling Server SQL)
- * Tanpa perlu Firebase onSnapshot!
- */
-export function subscribeToAttendance(callback: (records: AttendanceRecord[]) => void) {
-  // Ambil data pertama kali
-  getAttendanceRecords().then((res) => callback(res.data));
+function getDeletedRecordKeys(): string[] {
+  try {
+    const raw = localStorage.getItem(DELETED_KEYS_STORAGE);
+    if (!raw) return [];
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
+}
 
-  // Polling server SQL setiap 4 detik untuk update langsung jika ada siswa yang baru absen
-  const intervalId = setInterval(async () => {
+function addDeletedRecordKey(id: string) {
+  try {
+    const keys = getDeletedRecordKeys();
+    if (!keys.includes(id)) {
+      keys.push(id);
+      localStorage.setItem(DELETED_KEYS_STORAGE, JSON.stringify(keys));
+    }
+  } catch {}
+}
+
+export async function submitAttendanceRecord(record: Omit<AttendanceRecord, 'id' | 'created_at'>): Promise<AttendanceRecord> {
+  const finalRecord: AttendanceRecord = {
+    ...record,
+    id: 'att_' + Math.random().toString(36).substring(2, 9),
+    created_at: new Date().toISOString()
+  };
+
+  // 1. Save locally
+  const local = getLocalRecords();
+  const updatedLocal = [finalRecord, ...local];
+  saveLocalRecords(updatedLocal);
+
+  // 2. Broadcast to Cloud Relay (instant cross-device & cross-network sync)
+  sendRecordToCloudRelay(finalRecord).catch(() => {});
+
+  // 3. Send to Google Sheets webhook if configured
+  sendRecordToGoogleSheet(finalRecord).catch(() => {});
+
+  // 4. Try Firestore (Firebase database: presensi-db-v2)
+  if (navigator.onLine && db) {
     try {
-      const res = await fetch('/api/attendance', {
-        headers: { Accept: 'application/json' },
+      await addDoc(collection(db, 'attendance'), {
+        ...finalRecord,
+        createdAtServer: Timestamp.now()
       });
-      if (res.ok) {
-        const result = await res.json();
-        if (result.success && Array.isArray(result.data)) {
-          saveLocalCache(result.data);
-          callback(result.data);
-        }
-      }
-    } catch {
-      // ignore network errors during background polling
+    } catch (err) {
+      console.warn('Firestore write failed, stored locally and in cloud relay:', err);
     }
-  }, 4000);
+  }
+
+  return finalRecord;
+}
+
+export async function getAttendanceRecords(): Promise<AttendanceRecord[]> {
+  const deletedKeys = getDeletedRecordKeys();
+  const local = getLocalRecords();
+  let merged: AttendanceRecord[] = [...local];
+
+  // Try Cloud Relay
+  try {
+    const cloudRecords = await fetchRecordsFromCloudRelay();
+    const map = new Map<string, AttendanceRecord>();
+    merged.forEach(r => map.set(r.id, r));
+    cloudRecords.forEach(r => {
+      if (!deletedKeys.includes(r.id)) {
+        map.set(r.id, r);
+      }
+    });
+    merged = Array.from(map.values());
+  } catch {}
+
+  // Try Google Sheet
+  try {
+    const sheetRecords = await fetchRecordsFromGoogleSheet();
+    const map = new Map<string, AttendanceRecord>();
+    merged.forEach(r => map.set(r.id, r));
+    sheetRecords.forEach(r => {
+      if (!deletedKeys.includes(r.id)) {
+        map.set(r.id, r);
+      }
+    });
+    merged = Array.from(map.values());
+  } catch {}
+
+  // Try Firestore (Firebase database: presensi-db-v2)
+  if (navigator.onLine && db) {
+    try {
+      const q = query(collection(db, 'attendance'), orderBy('created_at', 'desc'), limit(150));
+      const snapshot = await getDocs(q);
+      const fsRecords: AttendanceRecord[] = [];
+      snapshot.forEach(docSnap => {
+        const data = docSnap.data() as AttendanceRecord;
+        fsRecords.push({ ...data, id: docSnap.id || data.id });
+      });
+
+      const map = new Map<string, AttendanceRecord>();
+      merged.forEach(r => map.set(r.id, r));
+      fsRecords.forEach(r => {
+        if (!deletedKeys.includes(r.id)) {
+          map.set(r.id, r);
+        }
+      });
+      merged = Array.from(map.values());
+    } catch (err) {
+      console.warn('Firestore fetch failed:', err);
+    }
+  }
+
+  merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  saveLocalRecords(merged);
+  return merged;
+}
+
+export function subscribeToAttendanceRecords(
+  callback: (records: AttendanceRecord[], isFromCloud: boolean) => void
+): () => void {
+  const deletedKeys = getDeletedRecordKeys();
+  let firestoreUnsubscribe = () => {};
+
+  // 1. Berlangganan ke Cloud Relay (SSE Realtime)
+  const unsubscribeCloud = subscribeToCloudRelay(
+    (newRec) => {
+      if (deletedKeys.includes(newRec.id)) return;
+      const current = getLocalRecords();
+      if (!current.some(r => r.id === newRec.id)) {
+        const updated = [newRec, ...current];
+        saveLocalRecords(updated);
+        callback(updated, true);
+      }
+    },
+    (deletedId) => {
+      addDeletedRecordKey(deletedId);
+      const current = getLocalRecords();
+      const updated = current.filter(r => r.id !== deletedId);
+      saveLocalRecords(updated);
+      callback(updated, true);
+    }
+  );
+
+  // Initial load
+  getAttendanceRecords().then(recs => callback(recs, false));
+
+  // 2. Berlangganan ke Firestore jika online (Firebase database: presensi-db-v2)
+  if (navigator.onLine && db) {
+    try {
+      const q = query(collection(db, 'attendance'), orderBy('created_at', 'desc'), limit(150));
+      firestoreUnsubscribe = onSnapshot(q, (snapshot) => {
+        const remote: AttendanceRecord[] = [];
+        snapshot.forEach(docSnap => {
+          const data = docSnap.data() as AttendanceRecord;
+          const id = docSnap.id || data.id;
+          if (!deletedKeys.includes(id)) {
+            remote.push({ ...data, id });
+          }
+        });
+        const current = getLocalRecords();
+        const map = new Map<string, AttendanceRecord>();
+        current.forEach(r => map.set(r.id, r));
+        remote.forEach(r => map.set(r.id, r));
+        const combined = Array.from(map.values()).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        saveLocalRecords(combined);
+        callback(combined, true);
+      }, (err) => {
+        console.warn('Firestore subscription fallback:', err);
+      });
+    } catch {}
+  }
+
+  // 3. Safe Quota-Friendly Background Sync Interval (Every 5 minutes = 300,000ms)
+  // This ensures periodic background sync without exceeding Firebase free tier read limits (only ~12 reads/hour per active user).
+  const safeSyncInterval = setInterval(async () => {
+    if (navigator.onLine) {
+      const latest = await getAttendanceRecords();
+      callback(latest, true);
+    }
+  }, 300000);
 
   return () => {
-    clearInterval(intervalId);
+    unsubscribeCloud();
+    firestoreUnsubscribe();
+    clearInterval(safeSyncInterval);
   };
 }
 
-/**
- * Mengirim rekaman presensi langsung ke Server SQL Database Mandiri
- */
-export async function submitAttendanceRecord(
-  record: Omit<AttendanceRecord, 'id'>
-): Promise<{ success: boolean; record: AttendanceRecord; isCloud: boolean; message: string }> {
-  try {
-    const res = await fetch('/api/attendance', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify(record),
-    });
+export async function deleteAttendanceRecord(id: string, name: string, createdAt: string): Promise<void> {
+  addDeletedRecordKey(id);
 
-    let result: any = null;
+  // 1. Delete local
+  const current = getLocalRecords();
+  const updated = current.filter(r => r.id !== id);
+  saveLocalRecords(updated);
+
+  // 2. Broadcast deletion to Cloud Relay
+  sendDeleteToCloudRelay(id, name, createdAt).catch(() => {});
+
+  // 3. Delete from Firestore directly (Firebase database: presensi-db-v2)
+  if (navigator.onLine && db) {
     try {
-      result = await res.json();
-    } catch {
-      throw new Error(`Server HTTP ${res.status}`);
-    }
-
-    if (!res.ok) {
-      throw new Error(result?.message || `Gagal menyimpan`);
-    }
-
-    const savedRecord = result.record as AttendanceRecord;
-
-    // Perbarui cache lokal
-    const current = memoryRecordsCache || [];
-    saveLocalCache([savedRecord, ...current.filter((r) => r.id !== savedRecord.id)]);
-
-    return {
-      success: true,
-      record: savedRecord,
-      isCloud: true,
-      message: 'Presensi berhasil dicatat (Tersimpan di perangkat & siap disinkronisasi).',
-    };
-  } catch (err: any) {
-    if (err.message && (err.message.includes('sudah') || err.message.includes('tercatat'))) {
-      throw err;
-    }
-
-    console.warn('[SQL-DB] Error POST /api/attendance, simpan ke cache lokal:', err);
-
-    // Fallback simpan lokal jika koneksi server sedang bermasalah
-    const fallbackRecord: AttendanceRecord = {
-      id: `rec-local-${Date.now()}`,
-      ...record,
-      created_at: record.created_at || new Date().toISOString(),
-    };
-
-    const currentRecords = memoryRecordsCache || [];
-    saveLocalCache([fallbackRecord, ...currentRecords]);
-
-    return {
-      success: true,
-      record: fallbackRecord,
-      isCloud: false,
-      message: 'Presensi berhasil dicatat (Tersimpan di perangkat & siap disinkronisasi).',
-    };
+      await deleteDoc(doc(db, 'attendance', id));
+    } catch {}
   }
 }
 
-/**
- * Memperbarui status presensi siswa oleh Guru di Server SQL
- */
-export async function updateRecordStatus(
-  id: string,
-  newStatus: AttendanceRecord['status'],
-  notes?: string
-): Promise<boolean> {
-  let isUpdated = false;
-  try {
-    const res = await fetch(`/api/attendance?id=${encodeURIComponent(id)}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, status: newStatus, notes }),
-    });
-    if (res.ok) {
-      isUpdated = true;
-    }
-  } catch (err) {
-    console.warn('Update status server error, updating local:', err);
-  }
-
-  // Always update local memory and cache
-  try {
-    let current = memoryRecordsCache;
-    if (!current) {
-      const raw = localStorage.getItem(LOCAL_RECORDS_KEY);
-      current = raw ? JSON.parse(raw) : [];
-    }
-    if (Array.isArray(current)) {
-      const updated = current.map((r) =>
-        r.id === id ? { ...r, status: newStatus, notes: notes !== undefined ? notes : r.notes } : r
-      );
-      saveLocalCache(updated);
-      isUpdated = true;
-    }
-  } catch (e) {
-    console.error('Local update error:', e);
-  }
-
-  return isUpdated;
-}
-
-/**
- * Menghapus satu rekaman presensi dari Server SQL & Cache Lokal
- */
-export async function deleteRecord(id: string): Promise<boolean> {
-  let isDeleted = false;
-  try {
-    const res = await fetch(`/api/attendance?id=${encodeURIComponent(id)}`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id }),
-    });
-    if (res.ok) {
-      isDeleted = true;
-    }
-  } catch (err) {
-    console.warn('Delete record server error, cleaning local cache:', err);
-  }
-
-  // Always clean up local storage & memory cache
-  try {
-    let current = memoryRecordsCache;
-    if (!current) {
-      const raw = localStorage.getItem(LOCAL_RECORDS_KEY);
-      current = raw ? JSON.parse(raw) : [];
-    }
-    if (Array.isArray(current)) {
-      const filtered = current.filter((r) => r.id !== id);
-      saveLocalCache(filtered);
-      isDeleted = true;
-    }
-    // Also remove from last submission session if matching
-    const lastSession = localStorage.getItem('man1_last_submission_session');
-    if (lastSession) {
-      try {
-        const parsed = JSON.parse(lastSession);
-        if (parsed?.id === id) {
-          localStorage.removeItem('man1_last_submission_session');
-        }
-      } catch (e) {}
-    }
-  } catch (e) {
-    console.error('Local cache delete error:', e);
-  }
-
-  return isDeleted;
-}
-
-/**
- * Mengosongkan seluruh data presensi di Server SQL & Cache Lokal
- */
-export async function deleteAllAttendanceRecords(): Promise<boolean> {
-  try {
-    await fetch('/api/attendance', { method: 'DELETE' });
-  } catch (err) {
-    console.warn('Delete all server error, clearing local cache:', err);
-  }
-  saveLocalCache([]);
-  try {
-    localStorage.removeItem('man1_last_submission_session');
-  } catch (e) {}
-  return true;
-}
-
-export function getStoredConfig() {
-  return { isConnected: true };
+export async function clearAllAttendanceRecords(): Promise<void> {
+  const current = getLocalRecords();
+  current.forEach(r => addDeletedRecordKey(r.id));
+  saveLocalRecords([]);
 }
