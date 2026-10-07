@@ -94,20 +94,28 @@ export async function submitAttendanceRecord(record: Omit<AttendanceRecord, 'id'
     created_at: new Date().toISOString()
   };
 
-  // 1. Save locally
+  // 1. Simpan ke local storage
   const local = getLocalRecords();
   const updatedLocal = [finalRecord, ...local];
   saveLocalRecords(updatedLocal);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('presensi_updated', { detail: updatedLocal }));
+  }
 
-  // 2. Try Firestore (Firebase database: presensi-db-v2)
-  if (navigator.onLine && db) {
+  // 2. Simpan ke Firestore (presensi-db-v2)
+  if (db) {
     try {
-      await addDoc(collection(db, 'attendance'), {
-        ...finalRecord,
-        createdAtServer: Timestamp.now()
-      });
+      const cleanData: Record<string, any> = {};
+      for (const [key, val] of Object.entries(finalRecord)) {
+        if (val !== undefined) {
+          cleanData[key] = val;
+        }
+      }
+      cleanData.createdAtServer = Timestamp.now();
+      await addDoc(collection(db, 'attendance'), cleanData);
+      console.log('Presensi berhasil tersimpan ke Firestore:', finalRecord.id);
     } catch (err) {
-      console.warn('Firestore write failed, stored locally:', err);
+      console.warn('Firestore write warning:', err);
     }
   }
 
@@ -119,8 +127,7 @@ export async function getAttendanceRecords(isAdmin: boolean = false): Promise<At
   const local = getLocalRecords();
   let merged: AttendanceRecord[] = [...local];
 
-  // Try Firestore (Firebase database: presensi-db-v2) only if the user is Admin (Teacher)
-  if (isAdmin && navigator.onLine && db) {
+  if (db) {
     try {
       const q = query(collection(db, 'attendance'), orderBy('created_at', 'desc'), limit(150));
       const snapshot = await getDocs(q);
@@ -139,17 +146,16 @@ export async function getAttendanceRecords(isAdmin: boolean = false): Promise<At
       });
       merged = Array.from(map.values());
     } catch (err) {
-      console.warn('Firestore fetch failed:', err);
+      console.warn('Firestore fetch fallback:', err);
     }
   }
 
   merged.sort((a, b) => parseDateToMs(b.created_at) - parseDateToMs(a.created_at));
   saveLocalRecords(merged);
 
-  // Backwards compatibility for both Array and { data: Array, isFromCloud: boolean }
   const result = merged as any;
   result.data = merged;
-  result.isFromCloud = isAdmin;
+  result.isFromCloud = !!db;
   return result;
 }
 
@@ -159,11 +165,9 @@ export function subscribeToAttendanceRecords(
   const deletedKeys = getDeletedRecordKeys();
   let firestoreUnsubscribe = () => {};
 
-  // Initial load
   getAttendanceRecords(true).then(recs => callback(recs, false));
 
-  // Berlangganan ke Firestore jika online (Firebase database: presensi-db-v2)
-  if (navigator.onLine && db) {
+  if (db) {
     try {
       const q = query(collection(db, 'attendance'), orderBy('created_at', 'desc'), limit(150));
       firestoreUnsubscribe = onSnapshot(q, (snapshot) => {
@@ -196,13 +200,11 @@ export function subscribeToAttendanceRecords(
 export async function deleteAttendanceRecord(id: string, name?: string, createdAt?: string): Promise<void> {
   addDeletedRecordKey(id);
 
-  // 1. Delete local
   const current = getLocalRecords();
   const updated = current.filter(r => r.id !== id);
   saveLocalRecords(updated);
 
-  // 2. Delete from Firestore directly (Firebase database: presensi-db-v2)
-  if (navigator.onLine && db) {
+  if (db) {
     try {
       await deleteDoc(doc(db, 'attendance', id));
     } catch {}
@@ -215,21 +217,16 @@ export async function clearAllAttendanceRecords(): Promise<void> {
   saveLocalRecords([]);
 }
 
-// ==========================================
-// 🛠️ ALIAS FUNGSI UNTUK COCOK DENGAN KODE ASLI GITHUB KAKAK:
-// ==========================================
-
 export const subscribeToAttendance = (callback: (records: AttendanceRecord[]) => void) => {
   return subscribeToAttendanceRecords((recs) => callback(recs));
 };
 
-// 1. Update status presensi siswa (Hadir, Sakit, Izin, Alangan Syar'i)
 export async function updateRecordStatus(id: string, newStatus: string, notes?: string): Promise<void> {
   const current = getLocalRecords();
   const updated = current.map(r => r.id === id ? { ...r, status: newStatus as any, notes: notes !== undefined ? notes : r.notes } : r);
   saveLocalRecords(updated);
 
-  if (navigator.onLine && db) {
+  if (db) {
     try {
       const updateData: any = { status: newStatus };
       if (notes !== undefined) {
@@ -242,12 +239,10 @@ export async function updateRecordStatus(id: string, newStatus: string, notes?: 
   }
 }
 
-// 2. Penghapusan data presensi tunggal
 export async function deleteRecord(id: string, name?: string, createdAt?: string): Promise<void> {
   await deleteAttendanceRecord(id, name || '', createdAt || '');
 }
 
-// 3. Pembersihan seluruh data di layar
 export async function deleteAllAttendanceRecords(): Promise<boolean> {
   try {
     await clearAllAttendanceRecords();
