@@ -2,6 +2,52 @@ import { AttendanceRecord } from '../types';
 import { db } from '../lib/firebase';
 import { collection, addDoc, getDocs, deleteDoc, doc, query, orderBy, onSnapshot, Timestamp, limit, updateDoc } from 'firebase/firestore';
 
+export function parseDateToMs(dateVal: any): number {
+  if (!dateVal) return 0;
+  if (typeof dateVal === 'object' && dateVal.seconds !== undefined) {
+    return dateVal.seconds * 1000;
+  }
+  if (typeof dateVal === 'object' && typeof dateVal.toDate === 'function') {
+    return dateVal.toDate().getTime();
+  }
+  const t = new Date(dateVal).getTime();
+  return isNaN(t) ? 0 : t;
+}
+
+export function formatRecordDate(dateVal: any): string {
+  if (!dateVal) return '-';
+  try {
+    let d: Date;
+    if (typeof dateVal === 'object' && dateVal.seconds !== undefined) {
+      d = new Date(dateVal.seconds * 1000);
+    } else if (typeof dateVal === 'object' && typeof dateVal.toDate === 'function') {
+      d = dateVal.toDate();
+    } else {
+      d = new Date(dateVal);
+    }
+    return isNaN(d.getTime()) ? '-' : d.toLocaleString('id-ID');
+  } catch {
+    return '-';
+  }
+}
+
+export function getSafeDateISOString(dateVal: any): string {
+  if (!dateVal) return '';
+  try {
+    let d: Date;
+    if (typeof dateVal === 'object' && dateVal.seconds !== undefined) {
+      d = new Date(dateVal.seconds * 1000);
+    } else if (typeof dateVal === 'object' && typeof dateVal.toDate === 'function') {
+      d = dateVal.toDate();
+    } else {
+      d = new Date(dateVal);
+    }
+    return isNaN(d.getTime()) ? '' : d.toISOString();
+  } catch {
+    return '';
+  }
+}
+
 const LOCAL_STORAGE_KEY = 'man1_boyolali_attendance_records_v2';
 const DELETED_KEYS_STORAGE = 'man1_boyolali_deleted_keys_v2';
 
@@ -97,7 +143,7 @@ export async function getAttendanceRecords(isAdmin: boolean = false): Promise<At
     }
   }
 
-  merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  merged.sort((a, b) => parseDateToMs(b.created_at) - parseDateToMs(a.created_at));
   saveLocalRecords(merged);
 
   // Backwards compatibility for both Array and { data: Array, isFromCloud: boolean }
@@ -133,7 +179,7 @@ export function subscribeToAttendanceRecords(
         const map = new Map<string, AttendanceRecord>();
         current.forEach(r => map.set(r.id, r));
         remote.forEach(r => map.set(r.id, r));
-        const combined = Array.from(map.values()).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        const combined = Array.from(map.values()).sort((a, b) => parseDateToMs(b.created_at) - parseDateToMs(a.created_at));
         saveLocalRecords(combined);
         callback(combined, true);
       }, (err) => {
@@ -147,7 +193,7 @@ export function subscribeToAttendanceRecords(
   };
 }
 
-export async function deleteAttendanceRecord(id: string, name: string, createdAt: string): Promise<void> {
+export async function deleteAttendanceRecord(id: string, name?: string, createdAt?: string): Promise<void> {
   addDeletedRecordKey(id);
 
   // 1. Delete local
@@ -170,7 +216,7 @@ export async function clearAllAttendanceRecords(): Promise<void> {
 }
 
 // ==========================================
-// ALIAS FUNGSI UNTUK COCOK DENGAN KODE ASLI GITHUB KAKAK:
+// 🛠️ ALIAS FUNGSI UNTUK COCOK DENGAN KODE ASLI GITHUB KAKAK:
 // ==========================================
 
 export const subscribeToAttendance = (callback: (records: AttendanceRecord[]) => void) => {
@@ -178,14 +224,18 @@ export const subscribeToAttendance = (callback: (records: AttendanceRecord[]) =>
 };
 
 // 1. Update status presensi siswa (Hadir, Sakit, Izin, Alangan Syar'i)
-export async function updateRecordStatus(id: string, newStatus: string): Promise<void> {
+export async function updateRecordStatus(id: string, newStatus: string, notes?: string): Promise<void> {
   const current = getLocalRecords();
-  const updated = current.map(r => r.id === id ? { ...r, status: newStatus as any } : r);
+  const updated = current.map(r => r.id === id ? { ...r, status: newStatus as any, notes: notes !== undefined ? notes : r.notes } : r);
   saveLocalRecords(updated);
 
   if (navigator.onLine && db) {
     try {
-      await updateDoc(doc(db, 'attendance', id), { status: newStatus });
+      const updateData: any = { status: newStatus };
+      if (notes !== undefined) {
+        updateData.notes = notes;
+      }
+      await updateDoc(doc(db, 'attendance', id), updateData);
     } catch (err) {
       console.warn('Failed to update status in Firestore:', err);
     }
@@ -193,11 +243,16 @@ export async function updateRecordStatus(id: string, newStatus: string): Promise
 }
 
 // 2. Penghapusan data presensi tunggal
-export async function deleteRecord(id: string, name: string, createdAt: string): Promise<void> {
-  await deleteAttendanceRecord(id, name, createdAt);
+export async function deleteRecord(id: string, name?: string, createdAt?: string): Promise<void> {
+  await deleteAttendanceRecord(id, name || '', createdAt || '');
 }
 
 // 3. Pembersihan seluruh data di layar
-export async function deleteAllAttendanceRecords(): Promise<void> {
-  await clearAllAttendanceRecords();
+export async function deleteAllAttendanceRecords(): Promise<boolean> {
+  try {
+    await clearAllAttendanceRecords();
+    return true;
+  } catch {
+    return false;
+  }
 }
