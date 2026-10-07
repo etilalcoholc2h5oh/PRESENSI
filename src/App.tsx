@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { KeyRound, X, AlertCircle, Timer } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { KeyRound, X, AlertCircle, Lock, Timer } from 'lucide-react';
 import { AttendanceRecord } from './types';
 import { Navbar } from './components/Navbar';
 import { StudentPresence } from './components/StudentPresence';
 import { AdminDashboard } from './components/AdminDashboard';
-import { getLocalRecords } from './services/attendanceService';
+import { getAttendanceRecords, subscribeToAttendance } from './services/attendanceService';
 import { MADRASAH_INFO } from './data/madrasahData';
 
 const DEFAULT_PIN = '3103';
@@ -15,193 +16,408 @@ const LOCKOUT_DURATION_SECONDS = 30;
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'student' | 'admin'>('student');
-  const [records, setRecords] = useState<AttendanceRecord[]>(() => getLocalRecords());
+  const [records, setRecords] = useState<AttendanceRecord[]>([]);
+  const [recentlySubmitted, setRecentlySubmitted] = useState<AttendanceRecord[]>([]);
+  const [isCloudConnected, setIsCloudConnected] = useState<boolean>(false);
 
   // Dynamic Admin PIN State
   const [adminPin, setAdminPin] = useState<string>(() => {
     try {
       return localStorage.getItem('man1_admin_pin_v2') || DEFAULT_PIN;
-    } catch {
+    } catch (e) {
       return DEFAULT_PIN;
     }
   });
 
-  // PIN Modal & Lockout State
-  const [isPinModalOpen, setIsPinModalOpen] = useState(false);
-  const [pinInput, setPinInput] = useState('');
-  const [pinError, setPinError] = useState('');
-  const [failedAttempts, setFailedAttempts] = useState<number>(() => {
+  const handleUpdateAdminPin = (newPin: string) => {
+    setAdminPin(newPin);
     try {
-      return parseInt(localStorage.getItem(PIN_FAILED_ATTEMPTS_KEY) || '0', 10);
-    } catch {
-      return 0;
+      localStorage.setItem('man1_admin_pin_v2', newPin);
+    } catch (e) {
+      console.error('Failed to save custom PIN:', e);
     }
+  };
+
+  // GPS Geofence status synced with Navbar
+  const [isInsideGeofence, setIsInsideGeofence] = useState<boolean>(true);
+
+  // Admin PIN Auth
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(false);
+  const [pinModalOpen, setPinModalOpen] = useState<boolean>(false);
+  const [pinInput, setPinInput] = useState<string>('');
+  const [pinError, setPinError] = useState<string | null>(null);
+
+  // Rate Limiting State
+  const [failedAttempts, setFailedAttempts] = useState<number>(() => {
+    const saved = localStorage.getItem(PIN_FAILED_ATTEMPTS_KEY);
+    return saved ? parseInt(saved, 10) || 0 : 0;
   });
   const [lockoutRemaining, setLockoutRemaining] = useState<number>(0);
 
-  // Check lockout on load
+  // Sync Rate Limiting & Countdown Timer
   useEffect(() => {
     const checkLockout = () => {
-      try {
-        const lockoutUntil = parseInt(localStorage.getItem(PIN_LOCKOUT_UNTIL_KEY) || '0', 10);
+      const lockoutUntilStr = localStorage.getItem(PIN_LOCKOUT_UNTIL_KEY);
+      if (lockoutUntilStr) {
+        const lockoutUntil = parseInt(lockoutUntilStr, 10);
         const now = Date.now();
         if (lockoutUntil > now) {
-          setLockoutRemaining(Math.ceil((lockoutUntil - now) / 1000));
+          const remainingSec = Math.ceil((lockoutUntil - now) / 1000);
+          setLockoutRemaining(remainingSec);
+          return;
         } else {
-          setLockoutRemaining(0);
+          // Lockout has expired! Reset state
           localStorage.removeItem(PIN_LOCKOUT_UNTIL_KEY);
+          localStorage.removeItem(PIN_FAILED_ATTEMPTS_KEY);
+          setFailedAttempts(0);
+          setLockoutRemaining(0);
         }
-      } catch {
+      } else {
         setLockoutRemaining(0);
       }
     };
+
     checkLockout();
-    const timer = setInterval(checkLockout, 1000);
-    return () => clearInterval(timer);
+    const interval = setInterval(checkLockout, 1000);
+    return () => clearInterval(interval);
   }, []);
 
-  const handleSwitchTab = (tab: 'student' | 'admin') => {
-    if (tab === 'admin') {
-      if (lockoutRemaining > 0) {
-        setIsPinModalOpen(true);
-        return;
-      }
-      setPinInput('');
-      setPinError('');
-      setIsPinModalOpen(true);
-    } else {
-      setActiveTab('student');
+  // Load records on start and on update
+    const loadRecords = async (newRecord?: AttendanceRecord) => {
+        if (newRecord) {
+              setRecentlySubmitted((prev) => {
+                      if (prev.some((r) => r.id === newRecord.id)) return prev;
+                              return [newRecord, ...prev];
+                                    });
+                                        }
+                                            try {
+                                                  const res = await getAttendanceRecords();
+                                                        if (newRecord) {
+                                                                setRecords([newRecord, ...(res.data || []).filter((r) => r.id !== newRecord.id)]);
+                                                                      } else {
+                                                                              setRecords(res.data || []);
+                                                                                    }
+                                                                                          setIsCloudConnected(res.isFromCloud);
+                                                                                              } catch (err) {
+                                                                                                    console.error('Error fetching records:', err);
+                                                                                                        }
+                                                                                                          };
+
+  useEffect(() => {
+    // Selalu muat data presensi agar HP siswa langsung mendeteksi presensi hari ini
+    loadRecords();
+
+    if (activeTab === 'admin') {
+      const unsubscribe = subscribeToAttendance((updatedRecords) => {
+        setRecords(updatedRecords);
+        setIsCloudConnected(true);
+      });
+      return () => {
+        if (unsubscribe) unsubscribe();
+      };
     }
-  };
 
-  const handleVerifyPin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (lockoutRemaining > 0) return;
+    const handleUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent<AttendanceRecord[]>;
+      if (customEvent.detail && Array.isArray(customEvent.detail)) {
+        setRecords(customEvent.detail);
+      }
+    };
+    window.addEventListener('presensi_updated', handleUpdate);
+    return () => {
+      window.removeEventListener('presensi_updated', handleUpdate);
+    };
+  }, [activeTab]);
 
-    if (pinInput === adminPin || pinInput === DEFAULT_PIN) {
-      setFailedAttempts(0);
-      localStorage.removeItem(PIN_FAILED_ATTEMPTS_KEY);
-      localStorage.removeItem(PIN_LOCKOUT_UNTIL_KEY);
-      setIsPinModalOpen(false);
-      setPinInput('');
-      setPinError('');
+  const handleOpenAdminAuth = () => {
+    if (isAdminAuthenticated) {
+      loadRecords();
       setActiveTab('admin');
     } else {
-      const newAttempts = failedAttempts + 1;
-      setFailedAttempts(newAttempts);
-      localStorage.setItem(PIN_FAILED_ATTEMPTS_KEY, newAttempts.toString());
-
-      if (newAttempts >= MAX_PIN_ATTEMPTS) {
-        const lockoutUntil = Date.now() + LOCKOUT_DURATION_SECONDS * 1000;
-        localStorage.setItem(PIN_LOCKOUT_UNTIL_KEY, lockoutUntil.toString());
-        setLockoutRemaining(LOCKOUT_DURATION_SECONDS);
-        setPinError(`Terlalu banyak percobaan salah. Terkunci selama ${LOCKOUT_DURATION_SECONDS} detik.`);
-      } else {
-        setPinError(`PIN salah! Sisa percobaan: ${MAX_PIN_ATTEMPTS - newAttempts}`);
-      }
       setPinInput('');
+      if (lockoutRemaining === 0) {
+        setPinError(null);
+      }
+      setPinModalOpen(true);
     }
   };
 
-  const loadLocalRecords = () => {
-    setRecords(getLocalRecords());
+  const handleVerifyPin = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+
+    // Check if locked out by rate limiter
+    if (lockoutRemaining > 0) {
+      setPinError(`Sistem terkunci sementara. Tunggu ${lockoutRemaining} detik.`);
+      return;
+    }
+
+    if (pinInput.trim() === adminPin) {
+      // Success: Clear rate limiting
+      localStorage.removeItem(PIN_FAILED_ATTEMPTS_KEY);
+      localStorage.removeItem(PIN_LOCKOUT_UNTIL_KEY);
+      setFailedAttempts(0);
+      setLockoutRemaining(0);
+      setPinError(null);
+
+      setIsAdminAuthenticated(true);
+      setPinModalOpen(false);
+      loadRecords();
+      setActiveTab('admin');
+    } else {
+      // Failed: Increase rate limit counter
+      const nextAttempts = failedAttempts + 1;
+
+      if (nextAttempts >= MAX_PIN_ATTEMPTS) {
+        // Trigger lockout
+        const lockoutUntil = Date.now() + LOCKOUT_DURATION_SECONDS * 1000;
+        localStorage.setItem(PIN_LOCKOUT_UNTIL_KEY, lockoutUntil.toString());
+        localStorage.setItem(PIN_FAILED_ATTEMPTS_KEY, nextAttempts.toString());
+        setFailedAttempts(nextAttempts);
+        setLockoutRemaining(LOCKOUT_DURATION_SECONDS);
+        setPinError(`PIN salah ${MAX_PIN_ATTEMPTS} kali! Akses terkunci selama ${LOCKOUT_DURATION_SECONDS} detik.`);
+        setPinInput('');
+      } else {
+        localStorage.setItem(PIN_FAILED_ATTEMPTS_KEY, nextAttempts.toString());
+        setFailedAttempts(nextAttempts);
+        const remainingAttempts = MAX_PIN_ATTEMPTS - nextAttempts;
+        setPinError(`PIN salah! Sisa percobaan: ${remainingAttempts} kali lagi.`);
+        setPinInput('');
+      }
+    }
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans antialiased">
+    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-800 selection:bg-emerald-500 selection:text-white">
+      {/* Navigation Header */}
       <Navbar
-        currentView={activeTab}
-        onChangeView={handleSwitchTab}
+        activeTab={activeTab}
+        setActiveTab={(tab) => {
+          if (tab === 'admin') {
+            handleOpenAdminAuth();
+          } else {
+            setActiveTab('student');
+          }
+        }}
+        onOpenAdminAuth={handleOpenAdminAuth}
+        isAdminAuthenticated={isAdminAuthenticated}
+        isInsideGeofence={isInsideGeofence}
       />
 
-      <main className="flex-1 max-w-6xl w-full mx-auto px-2 sm:px-4 py-3">
-        {activeTab === 'admin' ? (
-          <AdminDashboard />
-        ) : (
-          <StudentPresence records={records} onRecordSubmitted={loadLocalRecords} />
-        )}
+      {/* Main Content Area with Smooth Animation */}
+      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
+        <AnimatePresence mode="wait">
+          {activeTab === 'student' && (
+            <motion.div
+              key="student-tab"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.25 }}
+            >
+              {(() => {
+                const mergedRecords = [
+                  ...recentlySubmitted.filter(r => !records.some(rec => rec.id === r.id)),
+                  ...records
+                ];
+                return (
+                  <StudentPresence
+                    records={mergedRecords}
+                    onRecordSubmitted={loadRecords}
+                  />
+                );
+              })()}
+            </motion.div>
+          )}
+          {activeTab === 'admin' && (
+            <motion.div
+              key="admin-tab"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.25 }}
+            >
+              <AdminDashboard
+                records={records}
+                isCloudConnected={isCloudConnected}
+                onRefreshData={loadRecords}
+                adminPin={adminPin}
+                onUpdateAdminPin={handleUpdateAdminPin}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </main>
 
-      <footer className="bg-white border-t border-slate-200 py-3 text-center text-[10px] text-slate-400 font-medium mt-auto">
-        {MADRASAH_INFO.name} • Sistem Presensi Sholat • Real-time Cloud Sync
-      </footer>
 
-      {/* Admin PIN Modal */}
-      {isPinModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-100 relative">
-            <button
-              onClick={() => setIsPinModalOpen(false)}
-              className="absolute top-3 right-3 p-1.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+
+      {/* PIN Authentication Modal for Guru/Admin */}
+      <AnimatePresence>
+        {pinModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 16 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 16 }}
+              transition={{ type: 'spring', stiffness: 350, damping: 25 }}
+              className="bg-white border border-slate-200 rounded-3xl max-w-sm w-full p-6 shadow-2xl relative text-center text-slate-800"
             >
-              <X className="w-4 h-4" />
-            </button>
+              <button
+                type="button"
+                onClick={() => setPinModalOpen(false)}
+                className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1 rounded-xl hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
 
-            <div className="text-center space-y-2 mb-4">
-              <div className="w-10 h-11 bg-emerald-100 text-emerald-700 rounded-xl flex items-center justify-center mx-auto shadow-xs">
-                <KeyRound className="w-5 h-5" />
-              </div>
-              <h3 className="text-sm font-bold text-slate-900">Autentikasi Guru / Admin</h3>
-              <p className="text-[11px] text-slate-500">
-                Masukkan PIN keamanan untuk mengakses Dashboard Admin
+              {lockoutRemaining > 0 ? (
+                <motion.div
+                  className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center mx-auto mb-3 shadow-xs"
+                  animate={{ scale: [1, 1.08, 1] }}
+                  transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+                >
+                  <Lock className="w-6 h-6" />
+                </motion.div>
+              ) : (
+                <motion.div
+                  className="w-12 h-12 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center mx-auto mb-3 shadow-xs"
+                  animate={{ rotate: [-3, 3, -3] }}
+                  transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
+                >
+                  <KeyRound className="w-6 h-6" />
+                </motion.div>
+              )}
+
+              <h3 className="font-black text-lg text-slate-900 tracking-tight">
+                {lockoutRemaining > 0 ? 'Akses Terkunci Sementara' : 'Akses Guru / Admin'}
+              </h3>
+              <p className="text-xs text-slate-500 mt-1 font-medium leading-relaxed">
+                {lockoutRemaining > 0
+                  ? 'Batas maksimal kesalahan PIN tercapai. Sistem mengaktifkan proteksi anti brute-force.'
+                  : 'Masukkan PIN pengawas untuk membuka rekapitulasi presensi sholat siswa.'}
               </p>
-            </div>
 
-            {lockoutRemaining > 0 ? (
-              <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-center space-y-1.5 my-3">
-                <div className="flex items-center justify-center gap-1.5 text-rose-700 text-xs font-bold">
-                  <Timer className="w-4 h-4 animate-spin" />
-                  <span>Akses Terkunci Sementara</span>
+              {/* Rate Limiting Lockout Active Box */}
+              {lockoutRemaining > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="mt-4 p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 space-y-2"
+                >
+                  <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-rose-700">
+                    <Timer className="w-4 h-4 text-rose-600 animate-pulse" />
+                    <span>Tunggu Sebelum Mencoba Lagi</span>
+                  </div>
+                  <div className="text-3xl font-black font-mono tracking-widest text-rose-700">
+                    00:{lockoutRemaining < 10 ? `0${lockoutRemaining}` : lockoutRemaining}
+                  </div>
+                  <p className="text-[11px] text-rose-600 font-medium">
+                    PIN terkunci demi keamanan data presensi madrasah.
+                  </p>
+                </motion.div>
+              )}
+
+              {/* Attempt Indicator Dots when failedAttempts > 0 and not locked */}
+              {failedAttempts > 0 && lockoutRemaining === 0 && (
+                <div className="mt-3 p-2.5 rounded-xl bg-amber-50 border border-amber-200/80 space-y-1.5">
+                  <div className="flex items-center justify-between text-[11px] font-semibold text-amber-800">
+                    <span>Percobaan Gagal:</span>
+                    <span className="font-bold">
+                      {failedAttempts} / {MAX_PIN_ATTEMPTS}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-center gap-1.5">
+                    {Array.from({ length: MAX_PIN_ATTEMPTS }).map((_, idx) => (
+                      <div
+                        key={idx}
+                        className={`h-1.5 rounded-full transition-all duration-300 ${
+                          idx < failedAttempts ? 'w-5 bg-rose-500' : 'w-2.5 bg-amber-200'
+                        }`}
+                      />
+                    ))}
+                  </div>
                 </div>
-                <p className="text-[11px] text-rose-600 font-medium">
-                  Coba lagi dalam <span className="font-bold text-rose-800">{lockoutRemaining} detik</span>
-                </p>
-              </div>
-            ) : (
-              <form onSubmit={handleVerifyPin} className="space-y-3">
+              )}
+
+              <form onSubmit={handleVerifyPin} className="mt-4 space-y-4">
                 <div>
                   <input
                     type="password"
-                    maxLength={6}
+                    maxLength={10}
+                    autoFocus={lockoutRemaining === 0}
+                    disabled={lockoutRemaining > 0}
+                    placeholder={lockoutRemaining > 0 ? 'Terkunci...' : 'Masukkan PIN'}
                     value={pinInput}
                     onChange={(e) => {
                       setPinInput(e.target.value);
-                      setPinError('');
+                      if (pinError) setPinError(null);
                     }}
-                    placeholder="Masukkan PIN (Default: 3103)"
-                    autoFocus
-                    className="w-full text-center tracking-widest text-base font-semibold bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                    className={`w-full border rounded-2xl py-3 px-4 text-center text-xl tracking-[0.35em] font-mono text-slate-900 focus:outline-none transition placeholder:tracking-normal placeholder:text-sm placeholder:font-sans ${
+                      lockoutRemaining > 0
+                        ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed placeholder:text-slate-400'
+                        : 'bg-slate-50 border-slate-300 focus:ring-2 focus:ring-emerald-500 placeholder:text-slate-400'
+                    }`}
                   />
+                  {pinError && (
+                    <p className="text-rose-600 text-xs font-bold mt-2 flex items-center justify-center gap-1.5">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span>{pinError}</span>
+                    </p>
+                  )}
                 </div>
 
-                {pinError && (
-                  <div className="flex items-center gap-1.5 text-rose-600 text-[11px] font-semibold bg-rose-50 px-2.5 py-1.5 rounded-lg border border-rose-100">
-                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                    <span>{pinError}</span>
-                  </div>
-                )}
+                {/* Quick Numpad for Mobile */}
+                <div className="grid grid-cols-3 gap-2 pt-1">
+                  {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', ' '].map((k) => (
+                    <motion.button
+                      key={k}
+                      type="button"
+                      disabled={lockoutRemaining > 0}
+                      whileHover={lockoutRemaining === 0 ? { scale: 1.05 } : undefined}
+                      whileTap={lockoutRemaining === 0 ? { scale: 0.92 } : undefined}
+                      onClick={() => {
+                        if (lockoutRemaining > 0) return;
+                        if (k === 'C') setPinInput('');
+                        else if (k === ' ') setPinInput((prev) => prev.slice(0, -1));
+                        else setPinInput((prev) => prev + k);
+                      }}
+                      className={`py-2.5 rounded-2xl border font-bold text-sm transition shadow-2xs ${
+                        lockoutRemaining > 0
+                          ? 'bg-slate-100 border-slate-200 text-slate-300 cursor-not-allowed opacity-50'
+                          : 'bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-800 cursor-pointer'
+                      }`}
+                    >
+                      {k === ' ' ? 'Hapus' : k}
+                    </motion.button>
+                  ))}
+                </div>
 
-                <div className="flex gap-2 pt-1">
+                <div className="flex gap-2 pt-2">
                   <button
                     type="button"
-                    onClick={() => setIsPinModalOpen(false)}
-                    className="flex-1 py-2 rounded-xl text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 transition"
+                    onClick={() => setPinModalOpen(false)}
+                    className="flex-1 py-2.5 rounded-2xl border border-slate-300 text-xs font-bold text-slate-600 hover:text-slate-900 cursor-pointer"
                   >
-                    Batal
+                    Tutup
                   </button>
                   <button
                     type="submit"
-                    disabled={!pinInput.trim()}
-                    className="flex-1 py-2 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 transition shadow-xs"
+                    disabled={lockoutRemaining > 0 || !pinInput.trim()}
+                    className={`flex-1 py-2.5 rounded-2xl text-xs font-bold shadow-xs transition ${
+                      lockoutRemaining > 0 || !pinInput.trim()
+                        ? 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300'
+                        : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white active:scale-95 cursor-pointer'
+                    }`}
                   >
-                    Buka Akses
+                    {lockoutRemaining > 0
+                      ? `Terkunci (${lockoutRemaining}s)`
+                      : 'Buka Dashboard'}
                   </button>
                 </div>
               </form>
-            )}
+            </motion.div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
     </div>
   );
-  }
+}
