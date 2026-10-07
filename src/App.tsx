@@ -1,6 +1,9 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { KeyRound, X, AlertCircle, Lock, Timer } from 'lucide-react';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth } from './lib/firebase';
+import { signInAdminWithGoogle } from './services/adminAuth';
 import { AttendanceRecord } from './types';
 import { Navbar } from './components/Navbar';
 import { StudentPresence } from './components/StudentPresence';
@@ -22,6 +25,20 @@ export default function App() {
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [recentlySubmitted, setRecentlySubmitted] = useState<AttendanceRecord[]>([]);
   const [isCloudConnected, setIsCloudConnected] = useState<boolean>(false);
+
+  // Login Google guru (dibutuhkan agar data cloud terbaca setelah aturan Firestore diperketat)
+  const [googleEmail, setGoogleEmail] = useState<string | null>(null);
+  const [googleAuthError, setGoogleAuthError] = useState<string | null>(null);
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (user) => setGoogleEmail(user?.email || null));
+    return () => unsub();
+  }, []);
+
+  const handleGoogleLogin = async () => {
+    setGoogleAuthError(null);
+    const res = await signInAdminWithGoogle();
+    if (!res.ok) setGoogleAuthError(res.error || 'Login Google gagal.');
+  };
 
   // Dynamic Admin PIN State
   const [adminPin, setAdminPin] = useState<string>(() => {
@@ -134,7 +151,7 @@ export default function App() {
     return () => {
       window.removeEventListener('presensi_updated', handleUpdate);
     };
-  }, [activeTab]);
+  }, [activeTab, googleEmail]);
 
   const handleOpenAdminAuth = () => {
     if (isAdminAuthenticated) {
@@ -170,6 +187,8 @@ export default function App() {
       setPinModalOpen(false);
       loadRecords();
       setActiveTab('admin');
+      // Dashboard tetap terbuka walau login Google gagal; banner akan menjelaskan
+      if (!auth.currentUser) void handleGoogleLogin();
     } else {
       // Failed: Increase rate limit counter
       const nextAttempts = failedAttempts + 1;
@@ -243,6 +262,21 @@ export default function App() {
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.25 }}
             >
+              {!googleEmail && (
+                <div className="mb-4 p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-semibold flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <span>
+                    Belum login Google guru. Data cloud tidak akan terbaca setelah aturan keamanan database aktif.
+                    {googleAuthError ? ` (${googleAuthError})` : ''}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleGoogleLogin}
+                    className="shrink-0 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold cursor-pointer"
+                  >
+                    Login Google
+                  </button>
+                </div>
+              )}
               <Suspense
                 fallback={
                   <div className="p-10 text-center text-sm font-semibold text-slate-500">

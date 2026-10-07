@@ -199,7 +199,10 @@ export async function getAttendanceRecords(isAdmin: boolean = false): Promise<At
   return Object.assign(merged, { data: merged, isFromCloud }) as any;
 }
 
-export function subscribeToAttendanceRecords(callback: (records: AttendanceRecord[], isFromCloud: boolean) => void): () => void {
+export function subscribeToAttendanceRecords(
+  callback: (records: AttendanceRecord[], isFromCloud: boolean) => void,
+  onError?: (err: any) => void
+): () => void {
   const deletedKeys = getDeletedRecordKeys();
   let unsub = () => {};
   if (db) {
@@ -231,7 +234,10 @@ export function subscribeToAttendanceRecords(callback: (records: AttendanceRecor
       saveLocalRecords(combined);
       callback(combined, true);
     };
-    unsub = onSnapshot(query(collection(db, 'attendance'), orderBy('created_at', 'desc'), limit(150)), process);
+    unsub = onSnapshot(query(collection(db, 'attendance'), orderBy('created_at', 'desc'), limit(150)), process, (err: any) => {
+      console.warn('Firestore snapshot error:', err);
+      if (onError) onError(err);
+    });
   }
   return unsub;
 }

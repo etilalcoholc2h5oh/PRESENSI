@@ -1,11 +1,22 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Default: tutup semua
     match /{document=**} {
       allow read, write: if false;
     }
 
     match /attendance/{recordId} {
+      // GANTI dengan email Google guru/admin yang boleh membaca data presensi
+      function isAdmin() {
+        return request.auth != null
+          && request.auth.token.email_verified == true
+          && request.auth.token.email in [
+            'GANTI_DENGAN_EMAIL_GURU_1@gmail.com',
+            'GANTI_DENGAN_EMAIL_GURU_2@gmail.com'
+          ];
+      }
+
       function isValidAttendance(data) {
         return data.keys().hasAll(['name', 'class', 'prayer_type', 'status', 'created_at']) &&
                data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
@@ -15,11 +26,11 @@ service cloud.firestore {
                data.created_at is string && data.created_at.size() <= 50;
       }
 
-      allow read: if true;
+      // Siswa (tanpa login) hanya boleh MEMBUAT presensi, tidak boleh membaca
       allow create: if isValidAttendance(request.resource.data);
-      allow update: if true;
-      allow delete: if true;
+
+      // Hanya guru yang login: baca, ubah, hapus
+      allow read, update, delete: if isAdmin();
     }
   }
 }
-
