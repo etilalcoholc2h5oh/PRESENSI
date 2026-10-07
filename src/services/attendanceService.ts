@@ -68,13 +68,13 @@ export async function submitAttendanceRecord(record: Omit<AttendanceRecord, 'id'
   return finalRecord;
 }
 
-export async function getAttendanceRecords(): Promise<AttendanceRecord[] & { data?: AttendanceRecord[]; isFromCloud?: boolean }> {
+export async function getAttendanceRecords(isAdmin: boolean = false): Promise<AttendanceRecord[] & { data?: AttendanceRecord[]; isFromCloud?: boolean }> {
   const deletedKeys = getDeletedRecordKeys();
   const local = getLocalRecords();
   let merged: AttendanceRecord[] = [...local];
 
-  // Try Firestore (Firebase database: presensi-db-v2)
-  if (navigator.onLine && db) {
+  // Try Firestore (Firebase database: presensi-db-v2) only if the user is Admin (Teacher)
+  if (isAdmin && navigator.onLine && db) {
     try {
       const q = query(collection(db, 'attendance'), orderBy('created_at', 'desc'), limit(150));
       const snapshot = await getDocs(q);
@@ -100,10 +100,10 @@ export async function getAttendanceRecords(): Promise<AttendanceRecord[] & { dat
   merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   saveLocalRecords(merged);
 
-  // Bungkus data agar kompatibel dengan pemanggilan asli Kakak
+  // Backwards compatibility for both Array and { data: Array, isFromCloud: boolean }
   const result = merged as any;
   result.data = merged;
-  result.isFromCloud = true;
+  result.isFromCloud = isAdmin;
   return result;
 }
 
@@ -114,7 +114,7 @@ export function subscribeToAttendanceRecords(
   let firestoreUnsubscribe = () => {};
 
   // Initial load
-  getAttendanceRecords().then(recs => callback(recs, false));
+  getAttendanceRecords(true).then(recs => callback(recs, false));
 
   // Berlangganan ke Firestore jika online (Firebase database: presensi-db-v2)
   if (navigator.onLine && db) {
@@ -142,17 +142,8 @@ export function subscribeToAttendanceRecords(
     } catch {}
   }
 
-  // Safe Quota-Friendly Background Sync Interval (Every 5 minutes = 300,000ms)
-  const safeSyncInterval = setInterval(async () => {
-    if (navigator.onLine) {
-      const latest = await getAttendanceRecords();
-      callback(latest, true);
-    }
-  }, 300000);
-
   return () => {
     firestoreUnsubscribe();
-    clearInterval(safeSyncInterval);
   };
 }
 
@@ -209,4 +200,4 @@ export async function deleteRecord(id: string, name: string, createdAt: string):
 // 3. Pembersihan seluruh data di layar
 export async function deleteAllAttendanceRecords(): Promise<void> {
   await clearAllAttendanceRecords();
-        }
+}
