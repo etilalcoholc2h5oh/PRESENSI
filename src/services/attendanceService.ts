@@ -68,7 +68,7 @@ export async function submitAttendanceRecord(record: Omit<AttendanceRecord, 'id'
   return finalRecord;
 }
 
-export async function getAttendanceRecords(): Promise<AttendanceRecord[]> {
+export async function getAttendanceRecords(): Promise<AttendanceRecord[] & { data?: AttendanceRecord[]; isFromCloud?: boolean }> {
   const deletedKeys = getDeletedRecordKeys();
   const local = getLocalRecords();
   let merged: AttendanceRecord[] = [...local];
@@ -99,7 +99,12 @@ export async function getAttendanceRecords(): Promise<AttendanceRecord[]> {
 
   merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   saveLocalRecords(merged);
-  return merged;
+
+  // Bungkus data agar kompatibel dengan pemanggilan asli Kakak
+  const result = merged as any;
+  result.data = merged;
+  result.isFromCloud = true;
+  return result;
 }
 
 export function subscribeToAttendanceRecords(
@@ -174,8 +179,12 @@ export async function clearAllAttendanceRecords(): Promise<void> {
 }
 
 // ==========================================
-// 🛠️ ALIAS FUNGSI UNTUK COCOK DENGAN AdminDashboard.tsx Kakak:
+// ALIAS FUNGSI UNTUK COCOK DENGAN KODE ASLI GITHUB KAKAK:
 // ==========================================
+
+export const subscribeToAttendance = (callback: (records: AttendanceRecord[]) => void) => {
+  return subscribeToAttendanceRecords((recs) => callback(recs));
+};
 
 // 1. Update status presensi siswa (Hadir, Sakit, Izin, Alangan Syar'i)
 export async function updateRecordStatus(id: string, newStatus: string): Promise<void> {
@@ -200,4 +209,4 @@ export async function deleteRecord(id: string, name: string, createdAt: string):
 // 3. Pembersihan seluruh data di layar
 export async function deleteAllAttendanceRecords(): Promise<void> {
   await clearAllAttendanceRecords();
-}
+        }
