@@ -1,8 +1,6 @@
 import { AttendanceRecord } from '../types';
 import { db } from '../lib/firebase';
 import { collection, addDoc, getDocs, deleteDoc, doc, query, orderBy, onSnapshot, Timestamp, limit } from 'firebase/firestore';
-import { sendRecordToGoogleSheet, fetchRecordsFromGoogleSheet } from './googleSheetService';
-import { sendRecordToCloudRelay, sendDeleteToCloudRelay, fetchRecordsFromCloudRelay, subscribeToCloudRelay } from './cloudRelayService';
 
 const LOCAL_STORAGE_KEY = 'man1_boyolali_attendance_records_v2';
 const DELETED_KEYS_STORAGE = 'man1_boyolali_deleted_keys_v2';
@@ -55,13 +53,7 @@ export async function submitAttendanceRecord(record: Omit<AttendanceRecord, 'id'
   const updatedLocal = [finalRecord, ...local];
   saveLocalRecords(updatedLocal);
 
-  // 2. Broadcast to Cloud Relay (instant cross-device & cross-network sync)
-  sendRecordToCloudRelay(finalRecord).catch(() => {});
-
-  // 3. Send to Google Sheets webhook if configured
-  sendRecordToGoogleSheet(finalRecord).catch(() => {});
-
-  // 4. Try Firestore (Firebase database: presensi-db-v2)
+  // 2. Try Firestore (Firebase database: presensi-db-v2)
   if (navigator.onLine && db) {
     try {
       await addDoc(collection(db, 'attendance'), {
@@ -69,7 +61,7 @@ export async function submitAttendanceRecord(record: Omit<AttendanceRecord, 'id'
         createdAtServer: Timestamp.now()
       });
     } catch (err) {
-      console.warn('Firestore write failed, stored locally and in cloud relay:', err);
+      console.warn('Firestore write failed, stored locally:', err);
     }
   }
 
@@ -80,32 +72,6 @@ export async function getAttendanceRecords(): Promise<AttendanceRecord[]> {
   const deletedKeys = getDeletedRecordKeys();
   const local = getLocalRecords();
   let merged: AttendanceRecord[] = [...local];
-
-  // Try Cloud Relay
-  try {
-    const cloudRecords = await fetchRecordsFromCloudRelay();
-    const map = new Map<string, AttendanceRecord>();
-    merged.forEach(r => map.set(r.id, r));
-    cloudRecords.forEach(r => {
-      if (!deletedKeys.includes(r.id)) {
-        map.set(r.id, r);
-      }
-    });
-    merged = Array.from(map.values());
-  } catch {}
-
-  // Try Google Sheet
-  try {
-    const sheetRecords = await fetchRecordsFromGoogleSheet();
-    const map = new Map<string, AttendanceRecord>();
-    merged.forEach(r => map.set(r.id, r));
-    sheetRecords.forEach(r => {
-      if (!deletedKeys.includes(r.id)) {
-        map.set(r.id, r);
-      }
-    });
-    merged = Array.from(map.values());
-  } catch {}
 
   // Try Firestore (Firebase database: presensi-db-v2)
   if (navigator.onLine && db) {
@@ -142,30 +108,10 @@ export function subscribeToAttendanceRecords(
   const deletedKeys = getDeletedRecordKeys();
   let firestoreUnsubscribe = () => {};
 
-  // 1. Berlangganan ke Cloud Relay (SSE Realtime)
-  const unsubscribeCloud = subscribeToCloudRelay(
-    (newRec) => {
-      if (deletedKeys.includes(newRec.id)) return;
-      const current = getLocalRecords();
-      if (!current.some(r => r.id === newRec.id)) {
-        const updated = [newRec, ...current];
-        saveLocalRecords(updated);
-        callback(updated, true);
-      }
-    },
-    (deletedId) => {
-      addDeletedRecordKey(deletedId);
-      const current = getLocalRecords();
-      const updated = current.filter(r => r.id !== deletedId);
-      saveLocalRecords(updated);
-      callback(updated, true);
-    }
-  );
-
   // Initial load
   getAttendanceRecords().then(recs => callback(recs, false));
 
-  // 2. Berlangganan ke Firestore jika online (Firebase database: presensi-db-v2)
+  // Berlangganan ke Firestore jika online (Firebase database: presensi-db-v2)
   if (navigator.onLine && db) {
     try {
       const q = query(collection(db, 'attendance'), orderBy('created_at', 'desc'), limit(150));
@@ -191,8 +137,7 @@ export function subscribeToAttendanceRecords(
     } catch {}
   }
 
-  // 3. Safe Quota-Friendly Background Sync Interval (Every 5 minutes = 300,000ms)
-  // This ensures periodic background sync without exceeding Firebase free tier read limits (only ~12 reads/hour per active user).
+  // Safe Quota-Friendly Background Sync Interval (Every 5 minutes = 300,000ms)
   const safeSyncInterval = setInterval(async () => {
     if (navigator.onLine) {
       const latest = await getAttendanceRecords();
@@ -201,7 +146,6 @@ export function subscribeToAttendanceRecords(
   }, 300000);
 
   return () => {
-    unsubscribeCloud();
     firestoreUnsubscribe();
     clearInterval(safeSyncInterval);
   };
@@ -215,10 +159,7 @@ export async function deleteAttendanceRecord(id: string, name: string, createdAt
   const updated = current.filter(r => r.id !== id);
   saveLocalRecords(updated);
 
-  // 2. Broadcast deletion to Cloud Relay
-  sendDeleteToCloudRelay(id, name, createdAt).catch(() => {});
-
-  // 3. Delete from Firestore directly (Firebase database: presensi-db-v2)
+  // 2. Delete from Firestore directly (Firebase database: presensi-db-v2)
   if (navigator.onLine && db) {
     try {
       await deleteDoc(doc(db, 'attendance', id));
