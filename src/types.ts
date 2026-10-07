@@ -15,17 +15,19 @@ export interface AttendanceRecord {
   class: string;
   prayer_type: PrayerType;
   status: AttendanceStatus;
-  ai_status: string; // e.g. 'Valid (Person Detected)' | 'Bypass Syar\'i' | 'Bypass Sakit/Izin' | 'Manual'
+  ai_status: string;
   ai_confidence?: number;
-  gps_status: string; // e.g. 'Valid (Dalam Radius)' | 'Di Luar Radius' | 'Bypass'
+  gps_status: string;
   gps_coords?: {
     latitude: number;
     longitude: number;
   };
-  gps_distance?: number; // in meters
-  snapshot_photo?: string; // base64 data URL
+  gps_distance?: number;
+  snapshot_photo?: string;
   notes?: string;
-  created_at: string; // ISO / Server timestamp
+  created_at: string;
+  recorded_time?: string;  // BARU: Menyimpan jam lokal HP (WIB)
+  recorded_date?: string;  // BARU: Menyimpan tanggal lokal HP
 }
 
 export interface GeofenceConfig {
