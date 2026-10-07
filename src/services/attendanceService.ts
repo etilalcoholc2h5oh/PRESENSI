@@ -1,6 +1,6 @@
 import { AttendanceRecord } from '../types';
 import { db } from '../lib/firebase';
-import { collection, addDoc, getDocs, deleteDoc, doc, query, orderBy, onSnapshot, Timestamp, limit, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, setDoc, getDocs, deleteDoc, doc, query, orderBy, onSnapshot, Timestamp, limit, updateDoc } from 'firebase/firestore';
 
 export function parseDateToMs(dateVal: any): number {
   if (!dateVal) return 0;
@@ -64,7 +64,17 @@ export function getLocalRecords(): AttendanceRecord[] {
 function saveLocalRecords(records: AttendanceRecord[]) {
   try {
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(records));
-  } catch {}
+  } catch (quotaErr) {
+    try {
+      const trimmed = records.map((r, i) => i < 5 ? r : { ...r, snapshot_photo: undefined });
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(trimmed));
+    } catch {
+      try {
+        const minimal = records.slice(0, 50).map(r => ({ ...r, snapshot_photo: undefined }));
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(minimal));
+      } catch {}
+    }
+  }
 }
 
 function getDeletedRecordKeys(): string[] {
@@ -102,7 +112,7 @@ export async function submitAttendanceRecord(record: Omit<AttendanceRecord, 'id'
     window.dispatchEvent(new CustomEvent('presensi_updated', { detail: updatedLocal }));
   }
 
-  // 2. Simpan ke Firestore (presensi-db-v2)
+  // 2. Simpan ke Firestore (Firebase database: presensi-db-v2)
   if (db) {
     try {
       const cleanData: Record<string, any> = {};
@@ -112,10 +122,20 @@ export async function submitAttendanceRecord(record: Omit<AttendanceRecord, 'id'
         }
       }
       cleanData.createdAtServer = Timestamp.now();
-      await addDoc(collection(db, 'attendance'), cleanData);
+      
+      await setDoc(doc(db, 'attendance', finalRecord.id), cleanData);
       console.log('Presensi berhasil tersimpan ke Firestore:', finalRecord.id);
     } catch (err) {
-      console.warn('Firestore write warning:', err);
+      console.warn('Firestore setDoc warning, mencoba addDoc fallback:', err);
+      try {
+        const cleanData: Record<string, any> = {};
+        for (const [key, val] of Object.entries(finalRecord)) {
+          if (val !== undefined) cleanData[key] = val;
+        }
+        await addDoc(collection(db, 'attendance'), cleanData);
+      } catch (addErr) {
+        console.warn('Firestore fallback warning:', addErr);
+      }
     }
   }
 
@@ -129,10 +149,18 @@ export async function getAttendanceRecords(isAdmin: boolean = false): Promise<At
 
   if (db) {
     try {
-      const q = query(collection(db, 'attendance'), orderBy('created_at', 'desc'), limit(150));
-      const snapshot = await getDocs(q);
+      const colRef = collection(db, 'attendance');
+      let snapshot;
+      try {
+        const q = query(colRef, orderBy('created_at', 'desc'), limit(150));
+        snapshot = await getDocs(q);
+      } catch (orderErr) {
+        const fallbackQ = query(colRef, limit(150));
+        snapshot = await getDocs(fallbackQ);
+      }
+
       const fsRecords: AttendanceRecord[] = [];
-      snapshot.forEach(docSnap => {
+      snapshot.forEach((docSnap: any) => {
         const data = docSnap.data() as AttendanceRecord;
         fsRecords.push({ ...data, id: docSnap.id || data.id });
       });
@@ -169,26 +197,35 @@ export function subscribeToAttendanceRecords(
 
   if (db) {
     try {
-      const q = query(collection(db, 'attendance'), orderBy('created_at', 'desc'), limit(150));
-      firestoreUnsubscribe = onSnapshot(q, (snapshot) => {
-        const remote: AttendanceRecord[] = [];
-        snapshot.forEach(docSnap => {
-          const data = docSnap.data() as AttendanceRecord;
-          const id = docSnap.id || data.id;
-          if (!deletedKeys.includes(id)) {
-            remote.push({ ...data, id });
-          }
+      const colRef = collection(db, 'attendance');
+      const attachListener = (qToUse: any) => {
+        return onSnapshot(qToUse, (snapshot: any) => {
+          const remote: AttendanceRecord[] = [];
+          snapshot.forEach((docSnap: any) => {
+            const data = docSnap.data() as AttendanceRecord;
+            const id = docSnap.id || data.id;
+            if (!deletedKeys.includes(id)) {
+              remote.push({ ...data, id });
+            }
+          });
+          const current = getLocalRecords();
+          const map = new Map<string, AttendanceRecord>();
+          current.forEach(r => map.set(r.id, r));
+          remote.forEach(r => map.set(r.id, r));
+          const combined = Array.from(map.values()).sort((a, b) => parseDateToMs(b.created_at) - parseDateToMs(a.created_at));
+          saveLocalRecords(combined);
+          callback(combined, true);
+        }, (err: any) => {
+          console.warn('Firestore subscription fallback:', err);
         });
-        const current = getLocalRecords();
-        const map = new Map<string, AttendanceRecord>();
-        current.forEach(r => map.set(r.id, r));
-        remote.forEach(r => map.set(r.id, r));
-        const combined = Array.from(map.values()).sort((a, b) => parseDateToMs(b.created_at) - parseDateToMs(a.created_at));
-        saveLocalRecords(combined);
-        callback(combined, true);
-      }, (err) => {
-        console.warn('Firestore subscription fallback:', err);
-      });
+      };
+
+      try {
+        const q = query(colRef, orderBy('created_at', 'desc'), limit(150));
+        firestoreUnsubscribe = attachListener(q);
+      } catch {
+        firestoreUnsubscribe = attachListener(query(colRef, limit(150)));
+      }
     } catch {}
   }
 
