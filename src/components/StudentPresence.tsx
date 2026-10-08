@@ -474,9 +474,9 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
       try {
         localStorage.setItem('man1_last_submission_session', JSON.stringify(info));
       } catch (e) {}
-      setSubmitSuccessMsg(res.message || 'Data dispensasi berhasil dikirim dan tercatat.');
-      setLocallySubmittedRecords((prev) => [res.record, ...prev]);
-      onRecordSubmitted(res.record);
+      setSubmitSuccessMsg('Data dispensasi berhasil dikirim dan tercatat.');
+      setLocallySubmittedRecords((prev) => [res, ...prev]);
+      onRecordSubmitted(res);
     } catch (err: any) {
       const msg = err.message || '';
       if (msg.includes('409') || msg.includes('sudah')) {

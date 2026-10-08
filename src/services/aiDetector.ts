@@ -898,5 +898,34 @@ export function renderBeRealDualCanvas(
   const metaText = `${options.gpsText || 'Area Madrasah'} | ${nowStr}`;
   ctx.fillText(metaText, 18, footerY + 50);
 
-  return canvas.toDataURL('image/jpeg', 0.6);
+  return compressToTinyJpeg(canvas);
+}
+
+/**
+ * Perkecil hasil akhir agar tiap foto sangat ringan (target <= ~15 KB):
+ * hemat kuota Firestore, cepat terkirim di sinyal lemah, dan tidak membebani HP.
+ */
+function compressToTinyJpeg(src: HTMLCanvasElement, maxBytes = 15000): string {
+  const steps: Array<[number, number]> = [
+    [360, 0.55],
+    [320, 0.5],
+    [280, 0.45],
+    [240, 0.4],
+    [200, 0.35],
+  ];
+  let last = '';
+  for (const [w, q] of steps) {
+    const h = Math.round((w * src.height) / src.width);
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    const cctx = c.getContext('2d');
+    if (!cctx) continue;
+    cctx.imageSmoothingQuality = 'high';
+    cctx.drawImage(src, 0, 0, w, h);
+    last = c.toDataURL('image/jpeg', q);
+    // panjang base64 * 0.75 ~ ukuran byte
+    if (last.length * 0.75 <= maxBytes) return last;
+  }
+  return last;
 }

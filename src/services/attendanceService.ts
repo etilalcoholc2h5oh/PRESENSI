@@ -108,6 +108,16 @@ function addDeletedRecordKey(id: string) {
   } catch {}
 }
 
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error('timeout')), ms);
+    p.then(
+      (v) => { clearTimeout(t); resolve(v); },
+      (e) => { clearTimeout(t); reject(e); }
+    );
+  });
+}
+
 export async function submitAttendanceRecord(record: Omit<AttendanceRecord, 'id' | 'created_at'>): Promise<AttendanceRecord> {
   const now = new Date();
   const nowIso = now.toISOString();
@@ -123,36 +133,58 @@ export async function submitAttendanceRecord(record: Omit<AttendanceRecord, 'id'
     recorded_date,
   };
 
+  // 1) Kirim ke server DULU (timeout + coba ulang). Tidak lagi pura-pura "berhasil"
+  //    kalau server tidak menerima data.
+  if (db) {
+    const cleanData: Record<string, any> = {
+      id: finalRecord.id,
+      name: finalRecord.name || '',
+      class: finalRecord.class || '',
+      prayer_type: finalRecord.prayer_type || 'Dhuha',
+      status: finalRecord.status || 'Hadir',
+      created_at: nowIso,
+      createdAt: nowIso,
+      recorded_time,
+      recorded_date,
+      createdAtServer: Timestamp.now(),
+      ai_status: finalRecord.ai_status || 'Manual',
+      ai_confidence: finalRecord.ai_confidence || 100,
+      gps_status: finalRecord.gps_status || 'Valid',
+      notes: finalRecord.notes || '',
+    };
+    if (finalRecord.snapshot_photo) cleanData.snapshot_photo = finalRecord.snapshot_photo;
+
+    let cloudOk = false;
+    let lastErr: any = null;
+    for (let attempt = 0; attempt < 2 && !cloudOk; attempt++) {
+      try {
+        await withTimeout(setDoc(doc(db, 'attendance', finalRecord.id), cleanData), 10000);
+        cloudOk = true;
+      } catch (err: any) {
+        lastErr = err;
+        if (err?.code === 'permission-denied' || err?.code === 'resource-exhausted') break;
+        if (attempt === 0) await new Promise((r) => setTimeout(r, 700));
+      }
+    }
+    if (!cloudOk) {
+      console.warn('Firestore gagal:', lastErr);
+      const code = lastErr?.code || '';
+      if (code === 'resource-exhausted') {
+        throw new Error('Kuota server sedang penuh. Coba lagi beberapa saat lagi.');
+      }
+      if (code === 'permission-denied') {
+        throw new Error('Server menolak data. Hubungi admin/guru.');
+      }
+      throw new Error('Koneksi ke server gagal. Periksa internet lalu tekan Kirim lagi.');
+    }
+  }
+
+  // 2) Setelah server menerima, baru simpan ringkasan lokal (tanpa foto) dan kabari UI
   const local = getLocalRecords();
   const updatedLocal = [finalRecord, ...local.filter(r => r.id !== finalRecord.id)];
   saveLocalRecords(updatedLocal);
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('presensi_updated', { detail: updatedLocal }));
-  }
-
-  if (db) {
-    try {
-      const cleanData: Record<string, any> = {
-        id: finalRecord.id,
-        name: finalRecord.name || '',
-        class: finalRecord.class || '',
-        prayer_type: finalRecord.prayer_type || 'Dhuha',
-        status: finalRecord.status || 'Hadir',
-        created_at: nowIso,
-        createdAt: nowIso,
-        recorded_time,
-        recorded_date,
-        createdAtServer: Timestamp.now(),
-        ai_status: finalRecord.ai_status || 'Manual',
-        ai_confidence: finalRecord.ai_confidence || 100,
-        gps_status: finalRecord.gps_status || 'Valid',
-        notes: finalRecord.notes || '',
-      };
-      if (finalRecord.snapshot_photo) cleanData.snapshot_photo = finalRecord.snapshot_photo;
-      await setDoc(doc(db, 'attendance', finalRecord.id), cleanData);
-    } catch (err: any) {
-      console.warn('Firestore fallback:', err);
-    }
   }
   return finalRecord;
 }
@@ -196,7 +228,7 @@ export async function getAttendanceRecords(isAdmin: boolean = false): Promise<At
   merged.sort((a, b) => parseDateToMs(b.created_at) - parseDateToMs(a.created_at));
   saveLocalRecords(merged);
   // App.tsx membaca res.data dan res.isFromCloud
-  return Object.assign(merged, { data: merged, isFromCloud }) as any;
+  return Object.assign([...merged], { data: merged, isFromCloud }) as any;
 }
 
 export function subscribeToAttendanceRecords(callback: (records: AttendanceRecord[], isFromCloud: boolean) => void): () => void {

@@ -4,10 +4,56 @@ import { KeyRound, X, AlertCircle, Lock, Timer } from 'lucide-react';
 import { AttendanceRecord } from './types';
 import { Navbar } from './components/Navbar';
 import { StudentPresence } from './components/StudentPresence';
-// Dashboard admin (xlsx + jspdf) dimuat hanya saat dibuka, supaya halaman siswa cepat tampil
+// Dashboard admin (xlsx + jspdf) dimuat hanya saat dibuka, supaya halaman siswa cepat tampil.
+// Jika file-nya gagal dimuat (mis. setelah update situs), halaman dimuat ulang sekali otomatis.
 const AdminDashboard = lazy(() =>
-  import('./components/AdminDashboard').then((m) => ({ default: m.AdminDashboard }))
+  import('./components/AdminDashboard')
+    .then((m) => ({ default: m.AdminDashboard }))
+    .catch((err) => {
+      try {
+        if (!sessionStorage.getItem('man1_admin_chunk_reload')) {
+          sessionStorage.setItem('man1_admin_chunk_reload', '1');
+          window.location.reload();
+          return new Promise<never>(() => {});
+        }
+      } catch {
+        // abaikan
+      }
+      throw err;
+    })
 );
+
+// Mencegah layar putih: error di dashboard admin tampil sebagai pesan yang jelas
+class AdminErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { error: Error | null }
+> {
+  state: { error: Error | null } = { error: null };
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  componentDidCatch(error: Error) {
+    console.error('Admin dashboard error:', error);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="p-6 rounded-3xl bg-rose-50 border border-rose-200 text-rose-800 text-sm space-y-3">
+          <p className="font-bold">Dashboard admin gagal dibuka.</p>
+          <p className="text-xs font-mono break-words">{String(this.state.error.message || this.state.error)}</p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 rounded-xl bg-rose-600 text-white text-xs font-bold cursor-pointer"
+          >
+            Muat ulang
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import { getAttendanceRecords, subscribeToAttendance } from './services/attendanceService';
 import { MADRASAH_INFO } from './data/madrasahData';
 
@@ -243,21 +289,23 @@ export default function App() {
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.25 }}
             >
-              <Suspense
-                fallback={
-                  <div className="p-10 text-center text-sm font-semibold text-slate-500">
-                    Memuat dashboard...
-                  </div>
-                }
-              >
-                <AdminDashboard
-                  records={records}
-                  isCloudConnected={isCloudConnected}
-                  onRefreshData={loadRecords}
-                  adminPin={adminPin}
-                  onUpdateAdminPin={handleUpdateAdminPin}
-                />
-              </Suspense>
+              <AdminErrorBoundary>
+                <Suspense
+                  fallback={
+                    <div className="p-10 text-center text-sm font-semibold text-slate-500">
+                      Memuat dashboard...
+                    </div>
+                  }
+                >
+                  <AdminDashboard
+                    records={records}
+                    isCloudConnected={isCloudConnected}
+                    onRefreshData={loadRecords}
+                    adminPin={adminPin}
+                    onUpdateAdminPin={handleUpdateAdminPin}
+                  />
+                </Suspense>
+              </AdminErrorBoundary>
             </motion.div>
           )}
         </AnimatePresence>
