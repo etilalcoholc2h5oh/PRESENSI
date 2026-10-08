@@ -1,4 +1,6 @@
 import { PrayerType, AttendanceStatus, AttendanceRecord } from '../types';
+import { PRAYER_TIME_CONFIG } from '../data/madrasahData';
+import { wibParts } from './wibTime';
 
 export interface PrayerSchedule {
   prayer: PrayerType;
@@ -7,19 +9,20 @@ export interface PrayerSchedule {
   label: string;
 }
 
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+// Jadwal Dhuha dan Dzuhur diambil dari SATU sumber (PRAYER_TIME_CONFIG di madrasahData.ts),
+// sama persis dengan yang dipakai saat siswa mengambil foto.
+function scheduleFromConfig(prayer: 'Dhuha' | 'Dzuhur'): PrayerSchedule {
+  const c = PRAYER_TIME_CONFIG[prayer];
+  const startTime = `${pad2(c.startHour)}:${pad2(c.startMinute)}`;
+  const endTime = `${pad2(c.endHour)}:${pad2(c.endMinute)}`;
+  return { prayer, startTime, endTime, label: `${startTime} - ${endTime} WIB` };
+}
+
 export const DEFAULT_PRAYER_SCHEDULES: Record<PrayerType, PrayerSchedule> = {
-  Dhuha: {
-    prayer: 'Dhuha',
-    startTime: '06:30',
-    endTime: '08:30',
-    label: '06:30 - 08:30 WIB',
-  },
-  Dzuhur: {
-    prayer: 'Dzuhur',
-    startTime: '11:30',
-    endTime: '13:30',
-    label: '11:30 - 13:30 WIB',
-  },
+  Dhuha: scheduleFromConfig('Dhuha'),
+  Dzuhur: scheduleFromConfig('Dzuhur'),
   'Sholat Jumat': {
     prayer: 'Sholat Jumat',
     startTime: '11:15',
@@ -28,24 +31,10 @@ export const DEFAULT_PRAYER_SCHEDULES: Record<PrayerType, PrayerSchedule> = {
   },
 };
 
-const SCHEDULE_STORAGE_KEY = 'man1_prayer_schedules';
 const SIMULATE_TIME_KEY = 'man1_simulate_prayer_time';
 
 export function getPrayerSchedules(): Record<PrayerType, PrayerSchedule> {
-  try {
-    const raw = localStorage.getItem(SCHEDULE_STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      return { ...DEFAULT_PRAYER_SCHEDULES, ...parsed };
-    }
-  } catch (e) {
-    console.warn('Error reading prayer schedules:', e);
-  }
   return DEFAULT_PRAYER_SCHEDULES;
-}
-
-export function savePrayerSchedules(schedules: Record<PrayerType, PrayerSchedule>): void {
-  localStorage.setItem(SCHEDULE_STORAGE_KEY, JSON.stringify(schedules));
 }
 
 export function isTimeSimulationMode(): boolean {
@@ -80,14 +69,13 @@ export function checkPrayerTime(
     };
   }
 
-  const hours = targetDate.getHours();
-  const minutes = targetDate.getMinutes();
+  // Selalu dihitung dalam WIB, bukan zona waktu perangkat
+  const { hour: hours, minute: minutes, dayOfWeek } = wibParts(targetDate);
   const currentMinutes = hours * 60 + minutes;
   const currentTimeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
 
   // Khusus Sholat Jumat, hanya berlaku di hari Jumat (5)
   if (prayer === 'Sholat Jumat') {
-    const dayOfWeek = targetDate.getDay();
     if (dayOfWeek !== 5) {
       return {
         isWithinTime: false,

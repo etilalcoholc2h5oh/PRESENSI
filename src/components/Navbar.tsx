@@ -7,7 +7,6 @@ interface NavbarProps {
   setActiveTab: (tab: 'student' | 'admin') => void;
   onOpenAdminAuth: () => void;
   isAdminAuthenticated: boolean;
-  isInsideGeofence: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -15,7 +14,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   setActiveTab,
   onOpenAdminAuth,
   isAdminAuthenticated,
-  isInsideGeofence,
 }) => {
   const handleAdminTabClick = () => {
     if (!isAdminAuthenticated) {
@@ -38,11 +36,8 @@ export const Navbar: React.FC<NavbarProps> = ({
               Presensi Sholat
             </span>
           </div>
-          <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
-            <span className="flex items-center gap-1.5 font-medium">
-              <span className={`w-2 h-2 rounded-full ${isInsideGeofence ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
-              <span>{isInsideGeofence ? 'Area Madrasah' : 'Luar Radius'}</span>
-            </span>
+          <div className="text-xs text-slate-500 mt-0.5 font-medium">
+            {MADRASAH_INFO.subtitle}
           </div>
         </div>
 

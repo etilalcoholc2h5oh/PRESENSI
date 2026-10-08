@@ -32,13 +32,6 @@ export interface AttendanceRecord {
   sync_pending?: boolean;
 }
 
-export interface GeofenceConfig {
-  latitude: number;
-  longitude: number;
-  radiusMeters: number;
-  locationName: string;
-}
-
 export interface DetectionResult {
   hasPerson: boolean;
   score: number;

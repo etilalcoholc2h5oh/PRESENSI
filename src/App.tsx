@@ -87,9 +87,6 @@ export default function App() {
     }
   };
 
-  // GPS Geofence status synced with Navbar
-  const [isInsideGeofence, setIsInsideGeofence] = useState<boolean>(true);
-
   // Admin PIN Auth
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(false);
   const [pinModalOpen, setPinModalOpen] = useState<boolean>(false);
@@ -256,7 +253,6 @@ export default function App() {
         }}
         onOpenAdminAuth={handleOpenAdminAuth}
         isAdminAuthenticated={isAdminAuthenticated}
-        isInsideGeofence={isInsideGeofence}
       />
 
       {/* Main Content Area with Smooth Animation */}

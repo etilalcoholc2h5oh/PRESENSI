@@ -4,6 +4,7 @@ import autoTable from 'jspdf-autotable';
 import { AttendanceRecord } from '../types';
 import { MADRASAH_INFO } from '../data/madrasahData';
 import { evaluateAttendanceRecord } from './prayerTimeService';
+import { wibDateKey } from './wibTime';
 
 export function exportToExcel(records: AttendanceRecord[], filterSummary?: string): void {
   const dataRows = records.map((rec, idx) => {
@@ -12,11 +13,13 @@ export function exportToExcel(records: AttendanceRecord[], filterSummary?: strin
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
+      timeZone: 'Asia/Jakarta',
     });
     const timeFormatted = d.toLocaleTimeString('id-ID', {
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',
+      timeZone: 'Asia/Jakarta',
     });
 
     // Evaluasi 3 Aturan Mutlak: Dalam Jam Sholat, Dalam Radius, Ada Bukti Foto
@@ -41,7 +44,7 @@ export function exportToExcel(records: AttendanceRecord[], filterSummary?: strin
     [`LAPORAN REKAPITULASI PRESENSI SHOLAT SISWA - ${MADRASAH_INFO.name.toUpperCase()}`],
     [`Alamat: ${MADRASAH_INFO.address}`],
     [`Periode / Filter: ${filterSummary || 'Semua Data Terarsip'} | Total Catatan: ${records.length}`],
-    [`Tanggal Ekspor: ${new Date().toLocaleString('id-ID')}`],
+    [`Tanggal Ekspor: ${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })}`],
     [],
   ]);
 
@@ -62,7 +65,7 @@ export function exportToExcel(records: AttendanceRecord[], filterSummary?: strin
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Rekap Presensi');
 
-  const filename = `Rekap_Presensi_Sholat_MAN1_Boyolali_${new Date().toISOString().slice(0, 10)}.xlsx`;
+  const filename = `Rekap_Presensi_Sholat_MAN1_Boyolali_${wibDateKey()}.xlsx`;
   XLSX.writeFile(wb, filename);
 }
 
@@ -79,15 +82,15 @@ export function exportToPdf(records: AttendanceRecord[], filterSummary?: string)
   doc.setFont('helvetica', 'normal');
   doc.text(MADRASAH_INFO.address, 14, 26);
   doc.text(`Filter / Periode: ${filterSummary || 'Semua Data Terarsip'} | Total Data: ${records.length} Siswa`, 14, 30);
-  doc.text(`Dicetak pada: ${new Date().toLocaleString('id-ID')}`, 14, 34);
+  doc.text(`Dicetak pada: ${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })}`, 14, 34);
 
   doc.setLineWidth(0.5);
   doc.line(14, 36, 283, 36);
 
   const tableData = records.map((rec, idx) => {
     const d = new Date(rec.created_at);
-    const dateStr = d.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' });
-    const timeStr = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+    const dateStr = d.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Asia/Jakarta' });
+    const timeStr = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' });
 
     // Evaluasi 3 Aturan Mutlak: Dalam Jam Sholat, Dalam Radius, Ada Bukti Foto
     const evaluation = evaluateAttendanceRecord(rec);
@@ -127,7 +130,7 @@ export function exportToPdf(records: AttendanceRecord[], filterSummary?: string)
     footStyles: { fillColor: [241, 245, 249], textColor: [30, 41, 59], fontStyle: 'bold' },
   });
 
-  const filename = `Laporan_Presensi_Sholat_MAN1_Boyolali_${new Date().toISOString().slice(0, 10)}.pdf`;
+  const filename = `Laporan_Presensi_Sholat_MAN1_Boyolali_${wibDateKey()}.pdf`;
   doc.save(filename);
 }
 

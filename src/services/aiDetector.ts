@@ -892,6 +892,7 @@ export function renderBeRealDualCanvas(
       year: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
+      timeZone: 'Asia/Jakarta',
     });
   ctx.fillStyle = '#cbd5e1';
   ctx.font = '12px "Plus Jakarta Sans", sans-serif';

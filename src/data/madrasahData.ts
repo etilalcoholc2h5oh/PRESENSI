@@ -1,4 +1,4 @@
-import { Student, AttendanceRecord, GeofenceConfig } from '../types';
+import { Student, AttendanceRecord } from '../types';
 
 export const MADRASAH_INFO = {
   name: 'MAN 1 Boyolali',
@@ -9,14 +9,6 @@ export const MADRASAH_INFO = {
   totalSiswa: 1041,
   totalLakiLaki: 351,
   totalPerempuan: 690,
-};
-
-// Lokasi Kompleks MAN 1 Boyolali (Jl. Kates No. 34, Siswodipuran - Ruang Kelas, Mushola, & Gedung Madrasah)
-export const DEFAULT_GEOFENCE: GeofenceConfig = {
-  latitude: -7.540982,
-  longitude: 110.599143,
-  radiusMeters: 600,
-  locationName: 'MAN 1 Boyolali (Ruang Kelas & Fasilitas Madrasah)',
 };
 
 export const CLASSES = [

@@ -18,6 +18,7 @@ import {
   BeRealRenderOptions,
 } from '../services/aiDetector';
 import { submitAttendanceRecord } from '../services/attendanceService';
+import { wibParts } from '../services/wibTime';
 import { BypassModal } from './BypassModal';
 import { BeRealPreviewModal } from './BeRealPreviewModal';
 
@@ -136,7 +137,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
   }, [studentGender]);
 
   // 2. Sesi Sholat & Hari Jumat
-  const isFridayReal = new Date().getDay() === 5;
+  const isFridayReal = wibParts().dayOfWeek === 5; // hari Jumat menurut WIB
   const [prayerType, setPrayerType] = useState<PrayerType>('Dhuha');
 
   // 3. Kamera State
@@ -464,13 +465,12 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
         ai_status: `Bypass (${status})`,
         gps_status: 'Valid',
         notes: cleanNotes,
-        created_at: new Date().toISOString(),
       });
       const info = {
         name: currentStudent.name,
         class: currentStudent.class,
         prayer: prayerType,
-        time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB',
+        time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' }) + ' WIB',
         status: status,
         date: todayStrISO,
       };
@@ -492,7 +492,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
           name: currentStudent.name,
           class: currentStudent.class,
           prayer: prayerType,
-          time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB',
+          time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' }) + ' WIB',
           status: status,
           date: todayStrISO,
         };
@@ -615,6 +615,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
     day: 'numeric',
     month: 'long',
     year: 'numeric',
+    timeZone: 'Asia/Jakarta',
   });
 
 

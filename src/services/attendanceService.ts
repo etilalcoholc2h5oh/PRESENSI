@@ -1,6 +1,6 @@
 import { AttendanceRecord } from '../types';
 import { db } from '../lib/firebase';
-import { collection, addDoc, setDoc, getDocs, deleteDoc, doc, query, orderBy, onSnapshot, Timestamp, limit, updateDoc, where, startAfter } from 'firebase/firestore';
+import { collection, addDoc, setDoc, getDocs, deleteDoc, doc, query, orderBy, onSnapshot, Timestamp, limit, updateDoc, where, startAfter, writeBatch } from 'firebase/firestore';
 
 export function parseDateToMs(dateVal: any): number {
   if (!dateVal) return 0;
@@ -321,41 +321,55 @@ export async function fetchAttendanceRange(
   return out;
 }
 
+/** Presensi yang masih menunggu dikirim dari perangkat ini (belum ada di server). */
+function getPendingLocalRecords(): AttendanceRecord[] {
+  const ids = new Set(getPending().map((p) => p.id));
+  if (ids.size === 0) return [];
+  return getLocalRecords().filter((r) => ids.has(r.id));
+}
+
+function mapCloudDoc(docSnap: any): AttendanceRecord {
+  const data = docSnap.data() as any;
+  const id = docSnap.id || data.id;
+  const recDate = data.created_at || data.createdAt || new Date().toISOString();
+  const { expireAt, createdAtServer, ...rest } = data;
+  return {
+    ...rest,
+    id,
+    created_at: recDate,
+    recorded_time: data.recorded_time || (new Date(recDate).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' }) + ' WIB'),
+    recorded_date: data.recorded_date || new Date(recDate).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Jakarta' }),
+    name: data.name || '',
+    class: data.class || '',
+    prayer_type: data.prayer_type || data.prayerType || 'Dhuha',
+    status: data.status || 'Hadir',
+  } as AttendanceRecord;
+}
+
 export async function getAttendanceRecords(isAdmin: boolean = false): Promise<AttendanceRecord[] & { data?: AttendanceRecord[]; isFromCloud?: boolean }> {
   const deletedKeys = getDeletedRecordKeys();
-  const local = getLocalRecords();
-  let merged: AttendanceRecord[] = [...local];
+  let merged: AttendanceRecord[] = [];
   let isFromCloud = false;
 
   if (db) {
     try {
       const colRef = collection(db, 'attendance');
-      const snapshot = await getDocs(query(colRef, orderBy('created_at', 'desc'), limit(150)));
-      if (!snapshot.empty) {
-        const fsRecords: AttendanceRecord[] = [];
-        snapshot.forEach((docSnap: any) => {
-          const data = docSnap.data() as any;
-          const id = docSnap.id || data.id;
-          let recDate = data.created_at || data.createdAt || new Date().toISOString();
-          fsRecords.push({
-            ...data,
-            id,
-            created_at: recDate,
-            recorded_time: data.recorded_time || (new Date(recDate).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' }) + ' WIB'),
-            recorded_date: data.recorded_date || new Date(recDate).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Jakarta' }),
-            name: data.name || '',
-            class: data.class || '',
-            prayer_type: data.prayer_type || data.prayerType || 'Dhuha',
-            status: data.status || 'Hadir',
-          });
-        });
-        const map = new Map<string, AttendanceRecord>();
-        merged.forEach(r => map.set(r.id, r));
-        fsRecords.forEach(r => { if (!deletedKeys.includes(r.id)) map.set(r.id, r); });
-        merged = Array.from(map.values());
-        isFromCloud = true;
-      }
-    } catch {}
+      const snapshot = await withTimeout<any>(getDocs(query(colRef, orderBy('created_at', 'desc'), limit(150))), 20000);
+      // Server berhasil dibaca: server adalah sumber kebenaran (termasuk bila kosong setelah
+      // "hapus semua" atau TTL), jadi cache lokal yang lama tidak dimunculkan lagi.
+      const remote: AttendanceRecord[] = [];
+      snapshot.forEach((docSnap: any) => {
+        const rec = mapCloudDoc(docSnap);
+        if (!deletedKeys.includes(rec.id)) remote.push(rec);
+      });
+      const remoteIds = new Set(remote.map((r) => r.id));
+      merged = [...remote, ...getPendingLocalRecords().filter((r) => !remoteIds.has(r.id))];
+      isFromCloud = true;
+    } catch {
+      merged = getLocalRecords(); // server tidak terjangkau: tampilkan cache terakhir
+    }
+  } else {
+    merged = getLocalRecords();
   }
   merged.sort((a, b) => parseDateToMs(b.created_at) - parseDateToMs(a.created_at));
   saveLocalRecords(merged);
@@ -363,39 +377,34 @@ export async function getAttendanceRecords(isAdmin: boolean = false): Promise<At
   return Object.assign([...merged], { data: merged, isFromCloud }) as any;
 }
 
-export function subscribeToAttendanceRecords(callback: (records: AttendanceRecord[], isFromCloud: boolean) => void): () => void {
+export function subscribeToAttendanceRecords(
+  callback: (records: AttendanceRecord[], isFromCloud: boolean) => void,
+  onError?: (err: any) => void
+): () => void {
   const deletedKeys = getDeletedRecordKeys();
   let unsub = () => {};
   if (db) {
     const process = (snapshot: any) => {
       const remote: AttendanceRecord[] = [];
       snapshot.forEach((docSnap: any) => {
-        const data = docSnap.data() as any;
-        const id = docSnap.id || data.id;
-        if (!deletedKeys.includes(id)) {
-          let recDate = data.created_at || data.createdAt || new Date().toISOString();
-          remote.push({
-            ...data,
-            id,
-            created_at: recDate,
-            recorded_time: data.recorded_time || (new Date(recDate).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' }) + ' WIB'),
-            recorded_date: data.recorded_date || new Date(recDate).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Jakarta' }),
-            name: data.name || '',
-            class: data.class || '',
-            prayer_type: data.prayer_type || data.prayerType || 'Dhuha',
-            status: data.status || 'Hadir',
-          });
-        }
+        const rec = mapCloudDoc(docSnap);
+        if (!deletedKeys.includes(rec.id)) remote.push(rec);
       });
-      const current = getLocalRecords();
-      const map = new Map<string, AttendanceRecord>();
-      current.forEach(r => map.set(r.id, r));
-      remote.forEach(r => map.set(r.id, r));
-      const combined = Array.from(map.values()).sort((a, b) => parseDateToMs(b.created_at) - parseDateToMs(a.created_at));
+      const remoteIds = new Set(remote.map((r) => r.id));
+      const combined = [...remote, ...getPendingLocalRecords().filter((r) => !remoteIds.has(r.id))].sort(
+        (a, b) => parseDateToMs(b.created_at) - parseDateToMs(a.created_at)
+      );
       saveLocalRecords(combined);
       callback(combined, true);
     };
-    unsub = onSnapshot(query(collection(db, 'attendance'), orderBy('created_at', 'desc'), limit(150)), process);
+    unsub = onSnapshot(
+      query(collection(db, 'attendance'), orderBy('created_at', 'desc'), limit(150)),
+      process,
+      (err: any) => {
+        console.warn('Firestore snapshot error:', err);
+        if (onError) onError(err);
+      }
+    );
   }
   return unsub;
 }
@@ -407,9 +416,42 @@ export async function deleteAttendanceRecord(id: string): Promise<void> {
   if (db) try { await deleteDoc(doc(db, 'attendance', id)); } catch {}
 }
 
-export async function deleteAllAttendanceRecords(): Promise<boolean> {
+export interface DeleteAllResult {
+  ok: boolean;
+  deleted: number;
+  error?: string;
+}
+
+/**
+ * Hapus SEMUA presensi di server (Firestore), bertahap 300 dokumen per putaran, lalu kosongkan cache lokal.
+ * Aman diulang: bila terhenti di tengah (kuota/jaringan), jalankan lagi untuk melanjutkan.
+ */
+export async function deleteAllAttendanceRecords(onProgress?: (deleted: number) => void): Promise<DeleteAllResult> {
+  const PAGE = 300;
+  const MAX_ROUNDS = 400; // pengaman: maksimal 120.000 dokumen per eksekusi
+  let deleted = 0;
+  if (!db) return { ok: false, deleted, error: 'Database tidak tersedia' };
+  try {
+    for (let round = 0; round < MAX_ROUNDS; round++) {
+      const snap = await withTimeout<any>(getDocs(query(collection(db, 'attendance'), limit(PAGE))), 30000);
+      if (snap.empty) break;
+      const batch = writeBatch(db);
+      snap.docs.forEach((d: any) => batch.delete(d.ref));
+      await withTimeout(batch.commit(), 30000);
+      deleted += snap.size;
+      if (onProgress) onProgress(deleted);
+      if (snap.size < PAGE) break;
+    }
+  } catch (err: any) {
+    const code = err?.code || '';
+    let error = 'Koneksi ke server gagal. Sebagian data mungkin sudah terhapus; jalankan lagi untuk melanjutkan.';
+    if (code === 'permission-denied') error = 'Server menolak penghapusan (aturan keamanan database).';
+    else if (code === 'resource-exhausted') error = 'Kuota server hari ini habis. Jalankan lagi nanti untuk melanjutkan.';
+    console.warn('Hapus semua gagal:', err);
+    return { ok: false, deleted, error };
+  }
   saveLocalRecords([]);
-  return true;
+  return { ok: true, deleted };
 }
 
 export const subscribeToAttendance = (callback: (records: AttendanceRecord[]) => void) => subscribeToAttendanceRecords((recs) => callback(recs));

@@ -32,6 +32,7 @@ import {
   getSafeDateISOString,
   fetchAttendanceRange,
 } from '../services/attendanceService';
+import { wibDateKey, wibMonthKey, wibDateKeyDaysAgo, wibDayStartIso, wibDayEndIso } from '../services/wibTime';
 
 interface AdminDashboardProps {
   records: AttendanceRecord[];
@@ -66,26 +67,32 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
   const [deleteAllConfirmOpen, setDeleteAllConfirmOpen] = useState(false);
   const [isDeletingAll, setIsDeletingAll] = useState(false);
+  const [deleteAllProgress, setDeleteAllProgress] = useState(0);
+  const [deleteAllConfirmText, setDeleteAllConfirmText] = useState('');
   const [adminViewTab, setAdminViewTab] = useState<'records' | 'unmarked'>('records');
   const [rekapClass, setRekapClass] = useState<string>('X A');
   const [rekapPrayer, setRekapPrayer] = useState<string>('Dhuha');
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   const handleConfirmDeleteAll = async () => {
+    if (deleteAllConfirmText.trim().toUpperCase() !== 'HAPUS') return;
     setIsDeletingAll(true);
+    setDeleteAllProgress(0);
     try {
-      const success = await deleteAllAttendanceRecords();
-      if (success) {
-        showToast('Semua data presensi berhasil dihapus!');
-        onRefreshData();
+      const res = await deleteAllAttendanceRecords((n) => setDeleteAllProgress(n));
+      if (res.ok) {
+        showToast(`Selesai: ${res.deleted} data presensi dihapus dari server.`);
+        setDeleteAllConfirmOpen(false);
+        setDeleteAllConfirmText('');
       } else {
-        showToast('Gagal menghapus semua data', 'error');
+        // Biarkan dialog terbuka agar bisa dilanjutkan (tekan lagi)
+        showToast(`${res.error || 'Gagal menghapus.'} (terhapus: ${res.deleted})`, 'error');
       }
+      onRefreshData();
     } catch (e: any) {
-      showToast('Gagal menghapus: ' + e.message, 'error');
+      showToast('Gagal menghapus: ' + (e?.message || e), 'error');
     } finally {
       setIsDeletingAll(false);
-      setDeleteAllConfirmOpen(false);
     }
   };
 
@@ -97,11 +104,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const applyDatePreset = (days: number) => {
-    const end = new Date();
-    const start = new Date();
-    start.setDate(end.getDate() - days);
-    setDateRangeEnd(end.toISOString().slice(0, 10));
-    setDateRangeStart(start.toISOString().slice(0, 10));
+    setDateRangeEnd(wibDateKey());
+    setDateRangeStart(wibDateKeyDaysAgo(days));
   };
 
   const resetFilters = () => {
@@ -117,7 +121,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Filter Data (dipakai tabel dan ekspor lengkap dari server)
   const matchesFilters = (rec: AttendanceRecord): boolean => {
     {
-      const recDate = new Date(rec.created_at).toISOString().slice(0, 10);
+      const recDate = wibDateKey(rec.created_at); // tanggal WIB, bukan UTC
       const recMonth = recDate.slice(0, 7); // e.g. "2026-05"
 
       // Filter Bulan Tertentu (misal: "2026-05" untuk Mei)
@@ -206,16 +210,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (selectedMonthYear) {
       const [y, m] = selectedMonthYear.split('-');
       start = `${y}-${m}-01`;
-      end = `${y}-${m}-${String(new Date(parseInt(y, 10), parseInt(m, 10), 0).getDate()).padStart(2, '0')}`;
+      end = `${y}-${m}-${String(new Date(Date.UTC(parseInt(y, 10), parseInt(m, 10), 0)).getUTCDate()).padStart(2, '0')}`;
     } else if (!start && !end) {
-      const e = new Date();
-      const st = new Date(e.getTime() - 6 * 86400000);
-      start = st.toISOString().slice(0, 10);
-      end = e.toISOString().slice(0, 10);
+      start = wibDateKeyDaysAgo(6);
+      end = wibDateKey();
     }
     if (!start) start = '2000-01-01';
     if (!end) end = '2999-12-31';
-    return { startIso: `${start}T00:00:00.000Z`, endIso: `${end}T23:59:59.999Z` };
+    // Batas hari mengikuti WIB (UTC+7), sama dengan filter tabel
+    return { startIso: wibDayStartIso(start), endIso: wibDayEndIso(end) };
   };
 
   // Ekspor LENGKAP: ambil semua data periode dari server, bukan hanya 150 data yang termuat
@@ -357,7 +360,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             LAPORAN AUDIT PRESENSI SHOLAT SISWA
           </h2>
           <p className="text-xs mt-1">
-            Dicetak pada: {new Date().toLocaleDateString('id-ID')} | Total Rekaman: {filteredRecords.length}
+            Dicetak pada: {new Date().toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta' })} | Total Rekaman: {filteredRecords.length}
           </p>
         </div>
 
@@ -437,13 +440,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             {/* Rekap Summary Cards */}
             {(() => {
-              const todayStr = new Date().toDateString();
+              const todayKey = wibDateKey(); // hari ini menurut WIB
               const classStudentsList = getStudentsByClass(rekapClass);
               const checkedInToday = records.filter((r) => {
                 return (
                   r.class === rekapClass &&
                   r.prayer_type === rekapPrayer &&
-                  new Date(r.created_at).toDateString() === todayStr &&
+                  wibDateKey(r.created_at) === todayKey &&
                   r.status === 'Hadir'
                 );
               });
@@ -456,7 +459,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 return (
                   r.class === rekapClass &&
                   r.prayer_type === rekapPrayer &&
-                  new Date(r.created_at).toDateString() === todayStr &&
+                  wibDateKey(r.created_at) === todayKey &&
                   excusedStatuses.includes(r.status as string)
                 );
               });
@@ -642,10 +645,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  const now = new Date();
-                  const y = now.getFullYear();
-                  const m = String(now.getMonth() + 1).padStart(2, '0');
-                  setSelectedMonthYear(`${y}-${m}`);
+                  setSelectedMonthYear(wibMonthKey());
                   setDateRangeStart('');
                   setDateRangeEnd('');
                 }}
@@ -976,8 +976,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 ) : (
                   paginatedRecords.map((rec, idx) => {
                     const d = new Date(rec.created_at);
-                    const dateStr = d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
-                    const timeStr = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+                    const dateStr = d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Jakarta' });
+                    const timeStr = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' });
 
                     let badgeColor = 'bg-emerald-50 text-emerald-700 border-emerald-200';
                     const badgeLabel = rec.status;
@@ -1163,7 +1163,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <p>NIP. 19680512 199403 1 002</p>
             </div>
             <div>
-              <p>Boyolali, {new Date().toLocaleDateString('id-ID')}</p>
+              <p>Boyolali, {new Date().toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta' })}</p>
               <p className="font-bold">Koordinator Pembina Keagamaan</p>
               <div className="h-16"></div>
               <p className="font-bold underline">Ustadz Muhammad Ilham, S.Pd.I.</p>
@@ -1209,7 +1209,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div className="flex justify-between">
                 <span className="text-slate-500">Waktu:</span>
                 <span className="font-mono text-slate-800">
-                  {new Date(viewPhotoRecord.created_at).toLocaleString('id-ID')}
+                  {new Date(viewPhotoRecord.created_at).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })}
                 </span>
               </div>
               <div className="flex justify-between">
@@ -1358,24 +1358,47 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div className="text-center">
                 <h3 className="text-base font-bold text-slate-900">Hapus Seluruh Data Presensi?</h3>
                 <p className="text-xs text-slate-500 mt-1">
-                  Tindakan ini akan menghapus semua riwayat presensi siswa secara permanen dari server database. Tindakan ini tidak dapat dibatalkan.
+                  Tindakan ini akan menghapus semua riwayat presensi siswa secara permanen dari server database. Tindakan ini tidak dapat dibatalkan. Ekspor Excel dulu jika datanya masih dibutuhkan.
                 </p>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                  Ketik <span className="text-rose-600">HAPUS</span> untuk melanjutkan:
+                </label>
+                <input
+                  type="text"
+                  value={deleteAllConfirmText}
+                  disabled={isDeletingAll}
+                  onChange={(e) => setDeleteAllConfirmText(e.target.value)}
+                  placeholder="HAPUS"
+                  autoCapitalize="characters"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-2xl px-3.5 py-2.5 text-sm font-bold text-slate-900 focus:ring-2 focus:ring-rose-500 focus:outline-none"
+                />
+                {isDeletingAll && (
+                  <p className="text-[11px] text-slate-500 mt-1.5 font-medium">
+                    Menghapus dari server... {deleteAllProgress} data terhapus. Jangan tutup halaman ini.
+                  </p>
+                )}
               </div>
 
               <div className="flex gap-2 pt-2">
                 <button
                   type="button"
                   disabled={isDeletingAll}
-                  onClick={() => setDeleteAllConfirmOpen(false)}
+                  onClick={() => {
+                    setDeleteAllConfirmOpen(false);
+                    setDeleteAllConfirmText('');
+                  }}
                   className="flex-1 py-2.5 rounded-2xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
                 >
                   Batal
                 </button>
                 <button
                   type="button"
-                  disabled={isDeletingAll}
+                  disabled={isDeletingAll || deleteAllConfirmText.trim().toUpperCase() !== 'HAPUS'}
                   onClick={handleConfirmDeleteAll}
-                  className="flex-1 py-2.5 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs transition cursor-pointer flex items-center justify-center gap-2"
+                  className="flex-1 py-2.5 rounded-2xl bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold shadow-xs transition cursor-pointer flex items-center justify-center gap-2"
                 >
                   {isDeletingAll ? 'Menghapus...' : 'Ya, Hapus Semua'}
                 </button>
