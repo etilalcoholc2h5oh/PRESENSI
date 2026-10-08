@@ -430,7 +430,11 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
                                                                                                                                                                                         time: localTimeWib,
                                                                                                                                                                                                 status: attendanceStatus,
                                                                                                                                                                                                       });
-                                                                                                                                                                                                            setSubmitSuccessMsg('Presensi Anda telah berhasil dikirim dan tercatat di sistem.');
+                                                                                                                                                                                                            setSubmitSuccessMsg(
+        newRecord.sync_pending
+          ? 'Presensi tersimpan di HP dan akan dikirim otomatis begitu server bisa menerima. Jangan hapus data browser dan buka aplikasi ini lagi nanti.'
+          : 'Presensi Anda telah berhasil dikirim dan tercatat di sistem.'
+      );
                                                                                                                                                                                                                   if (onRecordSubmitted) {
                                                                                                                                                                                                                           onRecordSubmitted(newRecord);
                                                                                                                                                                                                                                 }
@@ -474,7 +478,11 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
       try {
         localStorage.setItem('man1_last_submission_session', JSON.stringify(info));
       } catch (e) {}
-      setSubmitSuccessMsg('Data dispensasi berhasil dikirim dan tercatat.');
+      setSubmitSuccessMsg(
+        res.sync_pending
+          ? 'Data tersimpan di HP dan akan dikirim otomatis begitu server bisa menerima. Jangan hapus data browser dan buka aplikasi ini lagi nanti.'
+          : 'Data dispensasi berhasil dikirim dan tercatat.'
+      );
       setLocallySubmittedRecords((prev) => [res, ...prev]);
       onRecordSubmitted(res);
     } catch (err: any) {

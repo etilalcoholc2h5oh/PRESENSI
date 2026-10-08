@@ -118,6 +118,95 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   });
 }
 
+// ---------- Antrean presensi yang belum terkirim ke server ----------
+const PENDING_KEY = 'man1_pending_submissions_v1';
+const PENDING_MAX = 100;
+
+interface PendingItem {
+  id: string;
+  data: Record<string, any>;
+  queuedAt: number;
+}
+
+function getPending(): PendingItem[] {
+  try {
+    const raw = localStorage.getItem(PENDING_KEY);
+    return raw ? (JSON.parse(raw) as PendingItem[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function setPending(list: PendingItem[]): boolean {
+  try {
+    localStorage.setItem(PENDING_KEY, JSON.stringify(list));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function enqueuePending(item: PendingItem): boolean {
+  const list = getPending().filter((p) => p.id !== item.id);
+  if (list.length >= PENDING_MAX) return false;
+  list.push(item);
+  return setPending(list);
+}
+
+async function sendToCloud(id: string, data: Record<string, any>): Promise<void> {
+  if (!db) throw new Error('db tidak tersedia');
+  await withTimeout(
+    setDoc(doc(db, 'attendance', id), { ...data, createdAtServer: Timestamp.now() }),
+    10000
+  );
+}
+
+let flushing = false;
+
+/** Kirim antrean ke server. Berhenti di kegagalan pertama supaya tidak membebani server. */
+export async function flushPendingSubmissions(): Promise<number> {
+  if (flushing || !db) return 0;
+  const queue = getPending();
+  if (queue.length === 0) return 0;
+  flushing = true;
+  let sent = 0;
+  try {
+    for (const item of queue.slice(0, 5)) {
+      try {
+        await sendToCloud(item.id, item.data);
+        setPending(getPending().filter((p) => p.id !== item.id));
+        sent++;
+      } catch {
+        break; // kuota/jaringan belum pulih: coba lagi di putaran berikutnya
+      }
+    }
+  } finally {
+    flushing = false;
+  }
+  if (sent > 0 && typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('presensi_synced', { detail: sent }));
+  }
+  return sent;
+}
+
+export function getPendingCount(): number {
+  return getPending().length;
+}
+
+/** Jalankan pengiriman ulang otomatis: saat aplikasi dibuka, saat online lagi, dan tiap 60 detik. */
+export function startPendingSync(): () => void {
+  if (typeof window === 'undefined') return () => {};
+  const tick = () => { void flushPendingSubmissions(); };
+  window.addEventListener('online', tick);
+  const t0 = setTimeout(tick, 3000);
+  const iv = setInterval(tick, 60000);
+  return () => {
+    window.removeEventListener('online', tick);
+    clearTimeout(t0);
+    clearInterval(iv);
+  };
+}
+
 export async function submitAttendanceRecord(record: Omit<AttendanceRecord, 'id' | 'created_at'>): Promise<AttendanceRecord> {
   const now = new Date();
   const nowIso = now.toISOString();
@@ -133,10 +222,10 @@ export async function submitAttendanceRecord(record: Omit<AttendanceRecord, 'id'
     recorded_date,
   };
 
-  // 1) Kirim ke server DULU (timeout + coba ulang). Tidak lagi pura-pura "berhasil"
-  //    kalau server tidak menerima data.
+  // 1) Coba kirim ke server (timeout 10 dtk). Jika gagal (kuota penuh, sinyal buruk, dll.),
+  //    presensi TETAP DITERIMA: disimpan di HP dan dikirim ulang otomatis saat server pulih.
   if (db) {
-    const cleanData: Record<string, any> = {
+    const cloudData: Record<string, any> = {
       id: finalRecord.id,
       name: finalRecord.name || '',
       class: finalRecord.class || '',
@@ -146,36 +235,23 @@ export async function submitAttendanceRecord(record: Omit<AttendanceRecord, 'id'
       createdAt: nowIso,
       recorded_time,
       recorded_date,
-      createdAtServer: Timestamp.now(),
       ai_status: finalRecord.ai_status || 'Manual',
       ai_confidence: finalRecord.ai_confidence || 100,
       gps_status: finalRecord.gps_status || 'Valid',
       notes: finalRecord.notes || '',
     };
-    if (finalRecord.snapshot_photo) cleanData.snapshot_photo = finalRecord.snapshot_photo;
+    if (finalRecord.snapshot_photo) cloudData.snapshot_photo = finalRecord.snapshot_photo;
 
-    let cloudOk = false;
-    let lastErr: any = null;
-    for (let attempt = 0; attempt < 2 && !cloudOk; attempt++) {
-      try {
-        await withTimeout(setDoc(doc(db, 'attendance', finalRecord.id), cleanData), 10000);
-        cloudOk = true;
-      } catch (err: any) {
-        lastErr = err;
-        if (err?.code === 'permission-denied' || err?.code === 'resource-exhausted') break;
-        if (attempt === 0) await new Promise((r) => setTimeout(r, 700));
+    try {
+      await sendToCloud(finalRecord.id, cloudData);
+    } catch (err: any) {
+      console.warn('Firestore gagal, presensi diantrekan di HP:', err);
+      const queued = enqueuePending({ id: finalRecord.id, data: cloudData, queuedAt: Date.now() });
+      if (!queued) {
+        throw new Error('Server tidak bisa dihubungi dan penyimpanan HP penuh. Coba lagi nanti.');
       }
-    }
-    if (!cloudOk) {
-      console.warn('Firestore gagal:', lastErr);
-      const code = lastErr?.code || '';
-      if (code === 'resource-exhausted') {
-        throw new Error('Kuota server sedang penuh. Coba lagi beberapa saat lagi.');
-      }
-      if (code === 'permission-denied') {
-        throw new Error('Server menolak data. Hubungi admin/guru.');
-      }
-      throw new Error('Koneksi ke server gagal. Periksa internet lalu tekan Kirim lagi.');
+      finalRecord.sync_pending = true;
+      setTimeout(() => { void flushPendingSubmissions(); }, 20000);
     }
   }
 

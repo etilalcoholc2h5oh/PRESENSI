@@ -28,6 +28,8 @@ export interface AttendanceRecord {
   created_at: string;
   recorded_time?: string;
   recorded_date?: string;
+  // true = tersimpan di HP, menunggu dikirim ke server (kuota/jaringan bermasalah)
+  sync_pending?: boolean;
 }
 
 export interface GeofenceConfig {

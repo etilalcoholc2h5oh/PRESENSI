@@ -54,7 +54,7 @@ class AdminErrorBoundary extends React.Component<
     return this.props.children;
   }
 }
-import { getAttendanceRecords, subscribeToAttendance } from './services/attendanceService';
+import { getAttendanceRecords, subscribeToAttendance, startPendingSync } from './services/attendanceService';
 import { MADRASAH_INFO } from './data/madrasahData';
 
 const DEFAULT_PIN = '3103';
@@ -130,6 +130,9 @@ export default function App() {
     const interval = setInterval(checkLockout, 1000);
     return () => clearInterval(interval);
   }, []);
+
+  // Kirim ulang presensi yang tertunda (kuota/jaringan) secara otomatis
+  useEffect(() => startPendingSync(), []);
 
   // Load records (admin) / catat presensi baru (siswa)
   const loadRecords = async (newRecord?: AttendanceRecord) => {
