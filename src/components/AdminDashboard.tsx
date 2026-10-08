@@ -401,11 +401,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               });
 
               const checkedNamesSet = new Set(checkedInToday.map((r) => r.name.trim().toLowerCase()));
-              const uncheckedList = classStudentsList.filter((s) => !checkedNamesSet.has(s.name.trim().toLowerCase()));
+
+              // Siswa berhalangan (haid / sakit / izin): sudah melapor, tapi TIDAK dihitung "sudah absen"
+              const excusedStatuses = ["Halangan Syar'i", 'Sakit', 'Izin'];
+              const excusedRecords = records.filter((r) => {
+                return (
+                  r.class === rekapClass &&
+                  r.prayer_type === rekapPrayer &&
+                  new Date(r.created_at).toDateString() === todayStr &&
+                  excusedStatuses.includes(r.status as string)
+                );
+              });
+              // satu baris per siswa; kalau sudah Hadir, tidak masuk daftar berhalangan
+              const excusedMap = new Map<string, (typeof excusedRecords)[number]>();
+              excusedRecords.forEach((r) => {
+                const key = r.name.trim().toLowerCase();
+                if (!checkedNamesSet.has(key) && !excusedMap.has(key)) excusedMap.set(key, r);
+              });
+              const excusedList = Array.from(excusedMap.values());
+              const excusedNamesSet = new Set(excusedMap.keys());
+
+              const uncheckedList = classStudentsList.filter((s) => {
+                const key = s.name.trim().toLowerCase();
+                return !checkedNamesSet.has(key) && !excusedNamesSet.has(key);
+              });
+              const excusedLabel = (st: string) => (st === "Halangan Syar'i" ? 'Haid' : st);
 
               return (
                 <div className="space-y-6">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
                       <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Siswa Terdaftar</span>
                       <div className="text-2xl font-black text-slate-900 mt-1">{classStudentsList.length} Siswa</div>
@@ -414,10 +438,42 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <span className="text-xs font-bold text-emerald-700 uppercase tracking-wider">Sudah Melakukan Absen</span>
                       <div className="text-2xl font-black text-emerald-800 mt-1">{checkedNamesSet.size} Siswa</div>
                     </div>
+                    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+                      <span className="text-xs font-bold text-amber-700 uppercase tracking-wider">Berhalangan (Haid/Sakit/Izin)</span>
+                      <div className="text-2xl font-black text-amber-800 mt-1">{excusedList.length} Siswa</div>
+                    </div>
                     <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4">
                       <span className="text-xs font-bold text-rose-700 uppercase tracking-wider">Belum Absen Hari Ini</span>
                       <div className="text-2xl font-black text-rose-800 mt-1">{uncheckedList.length} Siswa</div>
                     </div>
+                  </div>
+
+                  {/* Daftar Siswa Berhalangan (Haid / Sakit / Izin) - terpisah dari yang sudah absen */}
+                  <div>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-amber-700 mb-3">
+                      <span>Siswa Berhalangan Kelas {rekapClass} ({rekapPrayer}) - sudah melapor, tidak dihitung sudah absen</span>
+                    </h4>
+                    {excusedList.length === 0 ? (
+                      <div className="p-4 rounded-2xl bg-amber-50/60 border border-amber-200 text-center text-amber-800 text-xs font-semibold">
+                        Belum ada siswa berhalangan hari ini.
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                        {excusedList.map((r, index) => (
+                          <div key={`excused-${r.id}-${index}`} className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 shadow-xs">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="text-xs font-bold text-slate-900 truncate">{r.name}</div>
+                              <span className="px-2.5 py-1 rounded-xl bg-amber-200/80 text-amber-900 text-[10px] font-bold shrink-0">
+                                {excusedLabel(r.status as string)}
+                              </span>
+                            </div>
+                            {r.notes ? (
+                              <div className="text-[11px] text-slate-600 font-medium mt-1.5 line-clamp-2">{r.notes}</div>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   {/* Daftar Siswa Belum Absen */}
