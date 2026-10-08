@@ -1,6 +1,6 @@
 import { AttendanceRecord } from '../types';
 import { db } from '../lib/firebase';
-import { collection, addDoc, setDoc, getDocs, deleteDoc, doc, query, orderBy, onSnapshot, Timestamp, limit, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, setDoc, getDocs, deleteDoc, doc, query, orderBy, onSnapshot, Timestamp, limit, updateDoc, where, startAfter } from 'firebase/firestore';
 
 export function parseDateToMs(dateVal: any): number {
   if (!dateVal) return 0;
@@ -119,6 +119,10 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 }
 
 // ---------- Antrean presensi yang belum terkirim ke server ----------
+// Masa simpan data di server (hari). Aktifkan kebijakan TTL di Firebase console untuk
+// koleksi `attendance`, kolom `expireAt`, agar data lama terhapus otomatis.
+export const RETENTION_DAYS = 7;
+
 const PENDING_KEY = 'man1_pending_submissions_v1';
 const PENDING_MAX = 100;
 
@@ -155,10 +159,12 @@ function enqueuePending(item: PendingItem): boolean {
 
 async function sendToCloud(id: string, data: Record<string, any>): Promise<void> {
   if (!db) throw new Error('db tidak tersedia');
-  await withTimeout(
-    setDoc(doc(db, 'attendance', id), { ...data, createdAtServer: Timestamp.now() }),
-    10000
-  );
+  const { expireAtMs, ...rest } = data;
+  const payload: Record<string, any> = { ...rest, createdAtServer: Timestamp.now() };
+  // Kolom TTL (Timestamp) agar Firestore menghapus data otomatis setelah masa simpan
+  const expMs = typeof expireAtMs === 'number' ? expireAtMs : Date.now() + RETENTION_DAYS * 86400000;
+  payload.expireAt = Timestamp.fromMillis(expMs);
+  await withTimeout(setDoc(doc(db, 'attendance', id), payload), 10000);
 }
 
 let flushing = false;
@@ -239,6 +245,7 @@ export async function submitAttendanceRecord(record: Omit<AttendanceRecord, 'id'
       ai_confidence: finalRecord.ai_confidence || 100,
       gps_status: finalRecord.gps_status || 'Valid',
       notes: finalRecord.notes || '',
+      expireAtMs: now.getTime() + RETENTION_DAYS * 24 * 60 * 60 * 1000,
     };
     if (finalRecord.snapshot_photo) cloudData.snapshot_photo = finalRecord.snapshot_photo;
 
@@ -263,6 +270,55 @@ export async function submitAttendanceRecord(record: Omit<AttendanceRecord, 'id'
     window.dispatchEvent(new CustomEvent('presensi_updated', { detail: updatedLocal }));
   }
   return finalRecord;
+}
+
+
+const PHOTO_PLACEHOLDER = 'x'.repeat(120);
+
+/**
+ * Ambil SEMUA presensi pada rentang waktu dari server (bertahap, 500 per halaman) untuk ekspor.
+ * Foto diganti penanda pendek agar memori HP tidak habis (ekspor hanya butuh status ada/tidaknya foto).
+ */
+export async function fetchAttendanceRange(
+  startIso: string,
+  endIso: string,
+  onProgress?: (count: number) => void
+): Promise<AttendanceRecord[]> {
+  if (!db) throw new Error('Database tidak tersedia');
+  const PAGE = 500;
+  const MAX = 40000;
+  const out: AttendanceRecord[] = [];
+  let last: any = null;
+  while (out.length < MAX) {
+    const base = [
+      where('created_at', '>=', startIso),
+      where('created_at', '<=', endIso),
+      orderBy('created_at', 'desc'),
+    ] as const;
+    const q = last
+      ? query(collection(db, 'attendance'), ...base, startAfter(last), limit(PAGE))
+      : query(collection(db, 'attendance'), ...base, limit(PAGE));
+    const snap = await getDocs(q);
+    snap.forEach((docSnap: any) => {
+      const data = docSnap.data() as any;
+      const recDate = data.created_at || data.createdAt || new Date().toISOString();
+      const { expireAt, createdAtServer, snapshot_photo, ...rest } = data;
+      out.push({
+        ...rest,
+        id: docSnap.id || data.id,
+        created_at: recDate,
+        name: data.name || '',
+        class: data.class || '',
+        prayer_type: data.prayer_type || data.prayerType || 'Dhuha',
+        status: data.status || 'Hadir',
+        snapshot_photo: snapshot_photo ? PHOTO_PLACEHOLDER : undefined,
+      } as AttendanceRecord);
+    });
+    if (onProgress) onProgress(out.length);
+    if (snap.size < PAGE) break;
+    last = snap.docs[snap.docs.length - 1];
+  }
+  return out;
 }
 
 export async function getAttendanceRecords(isAdmin: boolean = false): Promise<AttendanceRecord[] & { data?: AttendanceRecord[]; isFromCloud?: boolean }> {

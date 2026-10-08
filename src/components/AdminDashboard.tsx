@@ -30,6 +30,7 @@ import {
   deleteRecord,
   deleteAllAttendanceRecords,
   getSafeDateISOString,
+  fetchAttendanceRange,
 } from '../services/attendanceService';
 
 interface AdminDashboardProps {
@@ -113,9 +114,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setSearchQuery('');
   };
 
-  // Filter Data
-  const filteredRecords = useMemo(() => {
-    return records.filter((rec) => {
+  // Filter Data (dipakai tabel dan ekspor lengkap dari server)
+  const matchesFilters = (rec: AttendanceRecord): boolean => {
+    {
       const recDate = new Date(rec.created_at).toISOString().slice(0, 10);
       const recMonth = recDate.slice(0, 7); // e.g. "2026-05"
 
@@ -144,8 +145,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         if (!matchName && !matchClass && !matchNotes) return false;
       }
       return true;
-    });
-  }, [records, selectedMonthYear, dateRangeStart, dateRangeEnd, selectedClass, selectedPrayer, selectedStatus, searchQuery]);
+    }
+  };
+  const filteredRecords = useMemo(
+    () => records.filter(matchesFilters),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [records, selectedMonthYear, dateRangeStart, dateRangeEnd, selectedClass, selectedPrayer, selectedStatus, searchQuery]
+  );
 
   // Statistics
   const stats = useMemo(() => {
@@ -191,13 +197,55 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return summary;
   };
 
-  const handleExportExcel = () => {
-    exportToExcel(filteredRecords, getFilterSummary());
+  const [exporting, setExporting] = useState<boolean>(false);
+
+  // Rentang ekspor (UTC, sama dengan filter tabel). Tanpa filter tanggal: 7 hari terakhir.
+  const getExportRange = (): { startIso: string; endIso: string } => {
+    let start = dateRangeStart;
+    let end = dateRangeEnd;
+    if (selectedMonthYear) {
+      const [y, m] = selectedMonthYear.split('-');
+      start = `${y}-${m}-01`;
+      end = `${y}-${m}-${String(new Date(parseInt(y, 10), parseInt(m, 10), 0).getDate()).padStart(2, '0')}`;
+    } else if (!start && !end) {
+      const e = new Date();
+      const st = new Date(e.getTime() - 6 * 86400000);
+      start = st.toISOString().slice(0, 10);
+      end = e.toISOString().slice(0, 10);
+    }
+    if (!start) start = '2000-01-01';
+    if (!end) end = '2999-12-31';
+    return { startIso: `${start}T00:00:00.000Z`, endIso: `${end}T23:59:59.999Z` };
   };
 
-  const handleExportPdf = () => {
-    exportToPdf(filteredRecords, getFilterSummary());
+  // Ekspor LENGKAP: ambil semua data periode dari server, bukan hanya 150 data yang termuat
+  const runExport = async (kind: 'excel' | 'pdf') => {
+    if (exporting) return;
+    setExporting(true);
+    let rows: AttendanceRecord[] = filteredRecords;
+    try {
+      const { startIso, endIso } = getExportRange();
+      const serverRows = await fetchAttendanceRange(startIso, endIso);
+      rows = serverRows.filter(matchesFilters);
+    } catch (err) {
+      console.warn('Ekspor lengkap gagal:', err);
+      alert('Gagal mengambil data lengkap dari server. Yang diekspor hanya data yang sedang tampil di dashboard.');
+    }
+    try {
+      if (rows.length === 0) {
+        alert('Tidak ada data pada periode dan filter ini.');
+      } else if (kind === 'excel') {
+        exportToExcel(rows, getFilterSummary());
+      } else {
+        exportToPdf(rows, getFilterSummary());
+      }
+    } finally {
+      setExporting(false);
+    }
   };
+
+  const handleExportExcel = () => { void runExport('excel'); };
+  const handleExportPdf = () => { void runExport('pdf'); };
 
   const handleSaveStatusEdit = async () => {
     if (!editRecord) return;
@@ -282,7 +330,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             onClick={handleExportExcel}
             className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-2xl text-xs font-bold transition shadow-xs cursor-pointer"
           >
-            <span>Excel (.xlsx)</span>
+            <span>{exporting ? 'Mengambil data...' : 'Excel (.xlsx)'}</span>
           </motion.button>
           <motion.button
             type="button"
@@ -292,7 +340,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             onClick={handleExportPdf}
             className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 rounded-2xl text-xs font-bold transition shadow-xs cursor-pointer"
           >
-            <span>Cetak PDF</span>
+            <span>{exporting ? 'Mohon tunggu...' : 'Cetak PDF'}</span>
           </motion.button>
         </div>
       </div>
