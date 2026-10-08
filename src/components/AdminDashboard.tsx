@@ -29,6 +29,7 @@ import {
   updateRecordStatus,
   deleteRecord,
   deleteAllAttendanceRecords,
+  getSafeDateISOString,
 } from '../services/attendanceService';
 
 interface AdminDashboardProps {
