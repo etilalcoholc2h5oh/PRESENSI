@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { wibDateKey } from '../services/prayerTimeService';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   RefreshCw,
@@ -97,11 +98,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const applyDatePreset = (days: number) => {
-    const end = new Date();
-    const start = new Date();
-    start.setDate(end.getDate() - days);
-    setDateRangeEnd(end.toISOString().slice(0, 10));
-    setDateRangeStart(start.toISOString().slice(0, 10));
+    const now = Date.now();
+    setDateRangeEnd(wibDateKey(now));
+    setDateRangeStart(wibDateKey(now - days * 86400000));
   };
 
   const resetFilters = () => {
@@ -117,7 +116,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Filter Data (dipakai tabel dan ekspor lengkap dari server)
   const matchesFilters = (rec: AttendanceRecord): boolean => {
     {
-      const recDate = new Date(rec.created_at).toISOString().slice(0, 10);
+      const recDate = wibDateKey(rec.created_at);
       const recMonth = recDate.slice(0, 7); // e.g. "2026-05"
 
       // Filter Bulan Tertentu (misal: "2026-05" untuk Mei)
@@ -208,14 +207,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       start = `${y}-${m}-01`;
       end = `${y}-${m}-${String(new Date(parseInt(y, 10), parseInt(m, 10), 0).getDate()).padStart(2, '0')}`;
     } else if (!start && !end) {
-      const e = new Date();
-      const st = new Date(e.getTime() - 6 * 86400000);
-      start = st.toISOString().slice(0, 10);
-      end = e.toISOString().slice(0, 10);
+      const nowMs = Date.now();
+      start = wibDateKey(nowMs - 6 * 86400000);
+      end = wibDateKey(nowMs);
     }
     if (!start) start = '2000-01-01';
     if (!end) end = '2999-12-31';
-    return { startIso: `${start}T00:00:00.000Z`, endIso: `${end}T23:59:59.999Z` };
+    return { startIso: `${start}T00:00:00.000+07:00`, endIso: `${end}T23:59:59.999+07:00` };
   };
 
   // Ekspor LENGKAP: ambil semua data periode dari server, bukan hanya 150 data yang termuat
@@ -437,13 +435,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             {/* Rekap Summary Cards */}
             {(() => {
-              const todayStr = new Date().toDateString();
+              const todayStr = wibDateKey(Date.now());
               const classStudentsList = getStudentsByClass(rekapClass);
               const checkedInToday = records.filter((r) => {
                 return (
                   r.class === rekapClass &&
                   r.prayer_type === rekapPrayer &&
-                  new Date(r.created_at).toDateString() === todayStr &&
+                  wibDateKey(r.created_at) === todayStr &&
                   r.status === 'Hadir'
                 );
               });
@@ -456,7 +454,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 return (
                   r.class === rekapClass &&
                   r.prayer_type === rekapPrayer &&
-                  new Date(r.created_at).toDateString() === todayStr &&
+                  wibDateKey(r.created_at) === todayStr &&
                   excusedStatuses.includes(r.status as string)
                 );
               });

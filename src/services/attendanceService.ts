@@ -1,6 +1,6 @@
 import { AttendanceRecord } from '../types';
 import { db } from '../lib/firebase';
-import { collection, addDoc, setDoc, getDocs, deleteDoc, doc, query, orderBy, onSnapshot, Timestamp, limit, updateDoc, where, startAfter } from 'firebase/firestore';
+import { collection, addDoc, setDoc, getDocs, deleteDoc, doc, query, orderBy, onSnapshot, Timestamp, limit, updateDoc, where, startAfter, writeBatch } from 'firebase/firestore';
 
 export function parseDateToMs(dateVal: any): number {
   if (!dateVal) return 0;
@@ -407,9 +407,23 @@ export async function deleteAttendanceRecord(id: string): Promise<void> {
   if (db) try { await deleteDoc(doc(db, 'attendance', id)); } catch {}
 }
 
+/** Hapus SEMUA presensi di server (per 500 dokumen) lalu bersihkan cache lokal. */
 export async function deleteAllAttendanceRecords(): Promise<boolean> {
-  saveLocalRecords([]);
-  return true;
+  try {
+    for (let round = 0; round < 100; round++) {
+      const snap = await withTimeout(getDocs(query(collection(db, 'attendance'), limit(500))), 20000);
+      if (snap.empty) break;
+      const batch = writeBatch(db);
+      snap.docs.forEach(d => batch.delete(d.ref));
+      await withTimeout(batch.commit(), 20000);
+      if (snap.size < 500) break;
+    }
+    saveLocalRecords([]);
+    return true;
+  } catch (e) {
+    console.error('Gagal hapus semua data di server:', e);
+    return false;
+  }
 }
 
 export const subscribeToAttendance = (callback: (records: AttendanceRecord[]) => void) => subscribeToAttendanceRecords((recs) => callback(recs));

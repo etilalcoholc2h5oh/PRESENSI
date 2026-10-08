@@ -69,24 +69,6 @@ export default function App() {
   const [recentlySubmitted, setRecentlySubmitted] = useState<AttendanceRecord[]>([]);
   const [isCloudConnected, setIsCloudConnected] = useState<boolean>(false);
 
-  // Dynamic Admin PIN State
-  const [adminPin, setAdminPin] = useState<string>(() => {
-    try {
-      return localStorage.getItem('man1_admin_pin_v2') || DEFAULT_PIN;
-    } catch (e) {
-      return DEFAULT_PIN;
-    }
-  });
-
-  const handleUpdateAdminPin = (newPin: string) => {
-    setAdminPin(newPin);
-    try {
-      localStorage.setItem('man1_admin_pin_v2', newPin);
-    } catch (e) {
-      console.error('Failed to save custom PIN:', e);
-    }
-  };
-
   // GPS Geofence status synced with Navbar
   const [isInsideGeofence, setIsInsideGeofence] = useState<boolean>(true);
 
@@ -207,7 +189,7 @@ export default function App() {
       return;
     }
 
-    if (pinInput.trim() === adminPin) {
+    if (pinInput.trim() === DEFAULT_PIN) {
       // Success: Clear rate limiting
       localStorage.removeItem(PIN_FAILED_ATTEMPTS_KEY);
       localStorage.removeItem(PIN_LOCKOUT_UNTIL_KEY);
@@ -304,8 +286,6 @@ export default function App() {
                     records={records}
                     isCloudConnected={isCloudConnected}
                     onRefreshData={loadRecords}
-                    adminPin={adminPin}
-                    onUpdateAdminPin={handleUpdateAdminPin}
                   />
                 </Suspense>
               </AdminErrorBoundary>

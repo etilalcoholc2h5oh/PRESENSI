@@ -10,15 +10,15 @@ export interface PrayerSchedule {
 export const DEFAULT_PRAYER_SCHEDULES: Record<PrayerType, PrayerSchedule> = {
   Dhuha: {
     prayer: 'Dhuha',
-    startTime: '06:30',
-    endTime: '08:30',
-    label: '06:30 - 08:30 WIB',
+    startTime: '06:55',
+    endTime: '07:15',
+    label: '06:55 - 07:15 WIB',
   },
   Dzuhur: {
     prayer: 'Dzuhur',
-    startTime: '11:30',
-    endTime: '13:30',
-    label: '11:30 - 13:30 WIB',
+    startTime: '11:40',
+    endTime: '12:15',
+    label: '11:40 - 12:15 WIB',
   },
   'Sholat Jumat': {
     prayer: 'Sholat Jumat',
@@ -56,6 +56,31 @@ export function setTimeSimulationMode(enabled: boolean): void {
   localStorage.setItem(SIMULATE_TIME_KEY, enabled ? 'true' : 'false');
 }
 
+const WEEKDAYS: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+const wibFmt = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'Asia/Jakarta',
+  hour: '2-digit',
+  minute: '2-digit',
+  weekday: 'short',
+  hourCycle: 'h23',
+});
+
+/** Jam, menit, dan hari (0=Minggu) menurut WIB, tidak tergantung zona waktu HP. */
+export function getWibParts(d: Date): { hour: number; minute: number; weekday: number } {
+  const parts = wibFmt.formatToParts(d);
+  const get = (t: string) => parts.find(p => p.type === t)?.value || '0';
+  return {
+    hour: parseInt(get('hour'), 10) % 24,
+    minute: parseInt(get('minute'), 10),
+    weekday: WEEKDAYS[get('weekday')] ?? 0,
+  };
+}
+
+/** Kunci tanggal YYYY-MM-DD menurut WIB. */
+export function wibDateKey(d: Date | string | number): string {
+  return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Jakarta' }).format(new Date(d));
+}
+
 /**
  * Cek apakah waktu tertentu berada dalam rentang jadwal sholat
  */
@@ -80,14 +105,15 @@ export function checkPrayerTime(
     };
   }
 
-  const hours = targetDate.getHours();
-  const minutes = targetDate.getMinutes();
+  const wib = getWibParts(targetDate);
+  const hours = wib.hour;
+  const minutes = wib.minute;
   const currentMinutes = hours * 60 + minutes;
   const currentTimeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
 
   // Khusus Sholat Jumat, hanya berlaku di hari Jumat (5)
   if (prayer === 'Sholat Jumat') {
-    const dayOfWeek = targetDate.getDay();
+    const dayOfWeek = wib.weekday;
     if (dayOfWeek !== 5) {
       return {
         isWithinTime: false,

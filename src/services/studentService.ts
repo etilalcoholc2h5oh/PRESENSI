@@ -5,14 +5,18 @@ const CUSTOM_STUDENTS_KEY = 'man1_custom_students_list_v2';
 const DATA_VERSION_KEY = 'man1_students_version';
 const CURRENT_DATA_VERSION = '2026_2027_official_1041';
 
-export function getAllStudents(): Student[] {
-  try {
+// Pembersihan data lama di localStorage cukup sekali saat modul dimuat
+try {
+  if (localStorage.getItem(DATA_VERSION_KEY) !== CURRENT_DATA_VERSION) {
     localStorage.removeItem(CUSTOM_STUDENTS_KEY);
     localStorage.removeItem('man1_custom_students_list');
     localStorage.setItem(DATA_VERSION_KEY, CURRENT_DATA_VERSION);
-  } catch (e) {
-    // ignore
   }
+} catch (e) {
+  // ignore
+}
+
+export function getAllStudents(): Student[] {
   return INITIAL_STUDENTS;
 }
 
