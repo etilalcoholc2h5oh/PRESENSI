@@ -54,7 +54,7 @@ class AdminErrorBoundary extends React.Component<
     return this.props.children;
   }
 }
-import { getAttendanceRecords, subscribeToAttendance, startPendingSync } from './services/attendanceService';
+import { getAttendanceRecords, startPendingSync } from './services/attendanceService';
 import { MADRASAH_INFO } from './data/madrasahData';
 
 const DEFAULT_PIN = '3103';
@@ -160,14 +160,10 @@ export default function App() {
 
   useEffect(() => {
     if (activeTab === 'admin') {
+      // Baca SEKALI saat dashboard dibuka (hemat kuota). Pembaruan lanjutan lewat tombol refresh,
+      // bukan pembaruan real-time yang membaca ulang tiap ada presensi baru.
       loadRecords();
-      const unsubscribe = subscribeToAttendance((updatedRecords) => {
-        setRecords(updatedRecords);
-        setIsCloudConnected(true);
-      });
-      return () => {
-        if (unsubscribe) unsubscribe();
-      };
+      return;
     }
 
     const handleUpdate = (e: Event) => {
@@ -184,7 +180,6 @@ export default function App() {
 
   const handleOpenAdminAuth = () => {
     if (isAdminAuthenticated) {
-      loadRecords();
       setActiveTab('admin');
     } else {
       setPinInput('');
@@ -214,7 +209,6 @@ export default function App() {
 
       setIsAdminAuthenticated(true);
       setPinModalOpen(false);
-      loadRecords();
       setActiveTab('admin');
     } else {
       // Failed: Increase rate limit counter
