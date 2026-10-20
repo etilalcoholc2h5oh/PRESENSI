@@ -138,8 +138,7 @@ export const StudentPresence: React.FC<StudentPresenceProps> = ({
 
   // 2. Sesi Sholat & Hari Jumat
   const isFridayReal = wibParts().dayOfWeek === 5; // hari Jumat menurut WIB
-  // Sesi awal mengikuti jam WIB: sebelum 09.00 = Dhuha, sesudahnya Dzuhur (Jumat diatur efek di bawah).
-  const [prayerType, setPrayerType] = useState<PrayerType>(() => (wibParts().hour >= 9 ? 'Dzuhur' : 'Dhuha'));
+  const [prayerType, setPrayerType] = useState<PrayerType>('Dhuha');
 
   // 3. Kamera State
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
