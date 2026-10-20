@@ -296,6 +296,21 @@ export async function submitAttendanceRecord(record: Omit<AttendanceRecord, 'id'
 }
 
 
+/**
+ * Presensi satu kelas + satu sholat dari server (untuk rekap "belum absen"). Dua filter kesetaraan
+ * tidak butuh indeks tambahan. Maksimal 35 siswa x 7 hari masa simpan, jadi kecil dan lengkap.
+ */
+export async function fetchClassPrayerRecords(className: string, prayer: string): Promise<AttendanceRecord[]> {
+  if (!db) throw new Error('db tidak tersedia');
+  const snap = await withTimeout<any>(
+    getDocs(query(collection(db, 'attendance'), where('class', '==', className), where('prayer_type', '==', prayer), limit(600))),
+    20000
+  );
+  const out: AttendanceRecord[] = [];
+  snap.forEach((d: any) => out.push(mapCloudDoc(d)));
+  return out;
+}
+
 const PHOTO_PLACEHOLDER = 'x'.repeat(120);
 
 /**
