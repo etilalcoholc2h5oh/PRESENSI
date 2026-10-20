@@ -1,6 +1,7 @@
 import { AttendanceRecord } from '../types';
 import { db } from '../lib/firebase';
 import { collection, addDoc, setDoc, getDocs, deleteDoc, doc, query, orderBy, onSnapshot, Timestamp, limit, updateDoc, where, startAfter, writeBatch } from 'firebase/firestore';
+import { wibDateKey } from './wibTime';
 
 export function parseDateToMs(dateVal: any): number {
   if (!dateVal) return 0;
@@ -213,6 +214,26 @@ export function startPendingSync(): () => void {
   };
 }
 
+/**
+ * ID dokumen tetap per siswa + sholat + hari (WIB), contoh: att_2026-10-17_Dzuhur_anaaltafunnisa_xb.
+ * Akibatnya: ketuk ganda, kirim ulang, atau absen dari dua HP berbeda menimpa dokumen yang sama,
+ * jadi satu siswa hanya punya satu catatan per sholat per hari di server.
+ */
+function makeAttendanceId(record: { name?: string; class?: string; prayer_type?: string }, now: Date): string {
+  const slug = (v?: string) => (v || '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 60);
+  const name = slug(record.name);
+  if (!name) return 'att_' + now.getTime() + '_' + Math.random().toString(36).substring(2, 7);
+  const prayer = slug(record.prayer_type) || 'dhuha';
+  return `att_${wibDateKey(now)}_${prayer}_${name}_${slug(record.class)}`;
+}
+
+function removeDeletedRecordKey(id: string) {
+  try {
+    const keys = getDeletedRecordKeys().filter((k) => k !== id);
+    localStorage.setItem(DELETED_KEYS_STORAGE, JSON.stringify(keys));
+  } catch {}
+}
+
 export async function submitAttendanceRecord(record: Omit<AttendanceRecord, 'id' | 'created_at'>): Promise<AttendanceRecord> {
   const now = new Date();
   const nowIso = now.toISOString();
@@ -222,11 +243,13 @@ export async function submitAttendanceRecord(record: Omit<AttendanceRecord, 'id'
 
   const finalRecord: AttendanceRecord = {
     ...record,
-    id: 'att_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+    id: makeAttendanceId(record, now),
     created_at: nowIso,
     recorded_time,
     recorded_date,
   };
+
+  removeDeletedRecordKey(finalRecord.id); // presensi ulang setelah dihapus guru harus tampil lagi
 
   // 1) Coba kirim ke server (timeout 10 dtk). Jika gagal (kuota penuh, sinyal buruk, dll.),
   //    presensi TETAP DITERIMA: disimpan di HP dan dikirim ulang otomatis saat server pulih.
