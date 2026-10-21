@@ -456,7 +456,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             {(() => {
               const todayKey = wibDateKey(); // hari ini menurut WIB
               const classStudentsList = getStudentsByClass(rekapClass);
-              const rekapSource = rekapRemote ?? records;
+              // Gabungan data kelas hari ini dari server + data yang sudah termuat (mencakup presensi lama tanpa dateKey)
+              const rekapSource = (() => {
+                if (!rekapRemote) return records;
+                const seen = new Set(rekapRemote.map((r) => r.id));
+                return [...rekapRemote, ...records.filter((r) => !seen.has(r.id))];
+              })();
               const checkedInToday = rekapSource.filter((r) => {
                 return (
                   r.class === rekapClass &&
