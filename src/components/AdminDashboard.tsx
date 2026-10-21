@@ -31,6 +31,7 @@ import {
   deleteAllAttendanceRecords,
   getSafeDateISOString,
   fetchAttendanceRange,
+  fetchClassPrayerRecords,
 } from '../services/attendanceService';
 import { wibDateKey, wibMonthKey, wibDateKeyDaysAgo, wibDayStartIso, wibDayEndIso } from '../services/wibTime';
 
@@ -72,6 +73,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [adminViewTab, setAdminViewTab] = useState<'records' | 'unmarked'>('records');
   const [rekapClass, setRekapClass] = useState<string>('X A');
   const [rekapPrayer, setRekapPrayer] = useState<string>('Dhuha');
+  // Rekap per kelas memakai data lengkap kelas itu dari server (bukan hanya 150 presensi terbaru)
+  const [rekapRemote, setRekapRemote] = useState<AttendanceRecord[] | null>(null);
+  const [rekapLoading, setRekapLoading] = useState(false);
+  useEffect(() => {
+    if (adminViewTab !== 'unmarked') return;
+    let cancelled = false;
+    setRekapLoading(true);
+    fetchClassPrayerRecords(rekapClass, rekapPrayer)
+      .then((rows) => { if (!cancelled) setRekapRemote(rows); })
+      .catch(() => { if (!cancelled) setRekapRemote(null); }) // gagal: pakai data yang sudah termuat
+      .finally(() => { if (!cancelled) setRekapLoading(false); });
+    return () => { cancelled = true; };
+  }, [adminViewTab, rekapClass, rekapPrayer, records]);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   const handleConfirmDeleteAll = async () => {
@@ -406,7 +420,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
               <div>
                 <h3 className="text-base font-bold text-slate-900">Rekap Kelas & Daftar Siswa Belum Absen</h3>
-                <p className="text-xs text-slate-500 mt-0.5">Pantau kehadiran harian per kelas secara real-time.</p>
+                <p className="text-xs text-slate-500 mt-0.5">Pantau kehadiran harian per kelas. Tekan tombol muat ulang untuk data terbaru.{rekapLoading ? ' (memuat…)' : ''}</p>
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
@@ -442,7 +456,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             {(() => {
               const todayKey = wibDateKey(); // hari ini menurut WIB
               const classStudentsList = getStudentsByClass(rekapClass);
-              const checkedInToday = records.filter((r) => {
+              // Gabungan data kelas hari ini dari server + data yang sudah termuat (mencakup presensi lama tanpa dateKey)
+              const rekapSource = (() => {
+                if (!rekapRemote) return records;
+                const seen = new Set(rekapRemote.map((r) => r.id));
+                return [...rekapRemote, ...records.filter((r) => !seen.has(r.id))];
+              })();
+              const checkedInToday = rekapSource.filter((r) => {
                 return (
                   r.class === rekapClass &&
                   r.prayer_type === rekapPrayer &&
@@ -455,7 +475,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               // Siswa berhalangan (haid / sakit / izin): sudah melapor, tapi TIDAK dihitung "sudah absen"
               const excusedStatuses = ["Halangan Syar'i", 'Sakit', 'Izin'];
-              const excusedRecords = records.filter((r) => {
+              const excusedRecords = rekapSource.filter((r) => {
                 return (
                   r.class === rekapClass &&
                   r.prayer_type === rekapPrayer &&

@@ -264,6 +264,7 @@ export async function submitAttendanceRecord(record: Omit<AttendanceRecord, 'id'
       createdAt: nowIso,
       recorded_time,
       recorded_date,
+      dateKey: wibDateKey(now), // tanggal WIB (YYYY-MM-DD) untuk rekap kelas yang hemat baca
       ai_status: finalRecord.ai_status || 'Manual',
       ai_confidence: finalRecord.ai_confidence || 100,
       gps_status: finalRecord.gps_status || 'Valid',
@@ -295,6 +296,30 @@ export async function submitAttendanceRecord(record: Omit<AttendanceRecord, 'id'
   return finalRecord;
 }
 
+
+/**
+ * Presensi satu kelas + satu sholat + SATU HARI (WIB) dari server, untuk rekap "belum absen".
+ * Tiga filter kesetaraan tidak butuh indeks tambahan, dan hanya membaca presensi hari itu
+ * (sekitar jumlah siswa yang sudah absen), bukan 7 hari. Dokumen lama tanpa dateKey tidak ikut.
+ */
+export async function fetchClassPrayerRecords(className: string, prayer: string, dateKey: string = wibDateKey()): Promise<AttendanceRecord[]> {
+  if (!db) throw new Error('db tidak tersedia');
+  const snap = await withTimeout<any>(
+    getDocs(
+      query(
+        collection(db, 'attendance'),
+        where('class', '==', className),
+        where('prayer_type', '==', prayer),
+        where('dateKey', '==', dateKey),
+        limit(200)
+      )
+    ),
+    20000
+  );
+  const out: AttendanceRecord[] = [];
+  snap.forEach((d: any) => out.push(mapCloudDoc(d)));
+  return out;
+}
 
 const PHOTO_PLACEHOLDER = 'x'.repeat(120);
 
