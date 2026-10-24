@@ -464,9 +464,9 @@ export function drawDetectionOverlay(
     const x = isMirrored ? Math.max(0, width - (origX + w)) : origX;
 
     // Bounding Box Neon Hijau
-    ctx.strokeStyle = '#ec4899';
+    ctx.strokeStyle = '#10b981';
     ctx.lineWidth = 3.5;
-    ctx.shadowColor = '#ec4899';
+    ctx.shadowColor = '#10b981';
     ctx.shadowBlur = 12;
     ctx.strokeRect(x, y, w, h);
 
@@ -520,7 +520,7 @@ export function drawDetectionOverlay(
     ctx.fillStyle = 'rgba(6, 78, 59, 0.95)';
     ctx.fillRect(badgeX, badgeY - 22, textWidth + 24, 26);
 
-    ctx.strokeStyle = '#ec4899';
+    ctx.strokeStyle = '#10b981';
     ctx.lineWidth = 1.5;
     ctx.strokeRect(badgeX, badgeY - 22, textWidth + 24, 26);
 
@@ -875,7 +875,7 @@ export function renderBeRealDualCanvas(
   ctx.fillStyle = grad;
   ctx.fillRect(0, footerY - 20, targetW, footerH + 20);
 
-  ctx.fillStyle = '#db2777';
+  ctx.fillStyle = '#059669';
   ctx.fillRect(0, footerY - 1, targetW, 2);
 
   ctx.fillStyle = '#ffffff';

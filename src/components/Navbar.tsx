@@ -32,7 +32,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="font-extrabold text-sm sm:text-base text-slate-900 tracking-tight">
               {MADRASAH_INFO.name}
             </span>
-            <span className="hidden sm:inline-block text-xs px-2 py-0.5 rounded-full bg-pink-50 text-pink-700 font-semibold border border-pink-200">
+            <span className="hidden sm:inline-block text-xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200">
               Presensi Sholat
             </span>
           </div>
@@ -51,7 +51,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             onClick={() => setActiveTab('student')}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer ${
               activeTab === 'student'
-                ? 'bg-white text-pink-700 shadow-sm border border-slate-200/80'
+                ? 'bg-white text-emerald-700 shadow-sm border border-slate-200/80'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -65,7 +65,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             onClick={handleAdminTabClick}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer ${
               activeTab === 'admin'
-                ? 'bg-white text-pink-700 shadow-sm border border-slate-200/80'
+                ? 'bg-white text-emerald-700 shadow-sm border border-slate-200/80'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
