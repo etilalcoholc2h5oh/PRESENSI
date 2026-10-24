@@ -29,7 +29,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         {/* Brand */}
         <div className="flex flex-col text-left">
           <div className="flex items-center gap-2">
-            <span className="font-extrabold text-sm sm:text-base text-slate-900 tracking-tight">🎀{' '}
+            <span className="font-extrabold text-sm sm:text-base text-slate-900 tracking-tight">
               {MADRASAH_INFO.name}
             </span>
             <span className="hidden sm:inline-block text-xs px-2 py-0.5 rounded-full bg-pink-50 text-pink-700 font-semibold border border-pink-200">
