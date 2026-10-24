@@ -38,13 +38,13 @@ class AdminErrorBoundary extends React.Component<
   render() {
     if (this.state.error) {
       return (
-        <div className="p-6 rounded-3xl bg-rose-50 border border-rose-200 text-rose-800 text-sm space-y-3">
+        <div className="p-6 rounded-3xl bg-red-50 border border-red-200 text-red-800 text-sm space-y-3">
           <p className="font-bold">Dashboard admin gagal dibuka.</p>
           <p className="text-xs font-mono break-words">{String(this.state.error.message || this.state.error)}</p>
           <button
             type="button"
             onClick={() => window.location.reload()}
-            className="px-4 py-2 rounded-xl bg-rose-600 text-white text-xs font-bold cursor-pointer"
+            className="px-4 py-2 rounded-xl bg-red-600 text-white text-xs font-bold cursor-pointer"
           >
             Muat ulang
           </button>
@@ -234,7 +234,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-800 selection:bg-emerald-500 selection:text-white">
+    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-800 selection:bg-pink-500 selection:text-white">
       {/* Navigation Header */}
       <Navbar
         activeTab={activeTab}
@@ -327,7 +327,7 @@ export default function App() {
 
               {lockoutRemaining > 0 ? (
                 <motion.div
-                  className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center mx-auto mb-3 shadow-xs"
+                  className="w-12 h-12 rounded-2xl bg-red-50 border border-red-200 text-red-600 flex items-center justify-center mx-auto mb-3 shadow-xs"
                   animate={{ scale: [1, 1.08, 1] }}
                   transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
                 >
@@ -335,7 +335,7 @@ export default function App() {
                 </motion.div>
               ) : (
                 <motion.div
-                  className="w-12 h-12 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center mx-auto mb-3 shadow-xs"
+                  className="w-12 h-12 rounded-2xl bg-pink-50 border border-pink-200 text-pink-600 flex items-center justify-center mx-auto mb-3 shadow-xs"
                   animate={{ rotate: [-3, 3, -3] }}
                   transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
                 >
@@ -357,16 +357,16 @@ export default function App() {
                 <motion.div
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  className="mt-4 p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 space-y-2"
+                  className="mt-4 p-4 rounded-2xl bg-red-50 border border-red-200 text-red-800 space-y-2"
                 >
-                  <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-rose-700">
-                    <Timer className="w-4 h-4 text-rose-600 animate-pulse" />
+                  <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-red-700">
+                    <Timer className="w-4 h-4 text-red-600 animate-pulse" />
                     <span>Tunggu Sebelum Mencoba Lagi</span>
                   </div>
-                  <div className="text-3xl font-black font-mono tracking-widest text-rose-700">
+                  <div className="text-3xl font-black font-mono tracking-widest text-red-700">
                     00:{lockoutRemaining < 10 ? `0${lockoutRemaining}` : lockoutRemaining}
                   </div>
-                  <p className="text-[11px] text-rose-600 font-medium">
+                  <p className="text-[11px] text-red-600 font-medium">
                     PIN terkunci demi keamanan data presensi madrasah.
                   </p>
                 </motion.div>
@@ -386,7 +386,7 @@ export default function App() {
                       <div
                         key={idx}
                         className={`h-1.5 rounded-full transition-all duration-300 ${
-                          idx < failedAttempts ? 'w-5 bg-rose-500' : 'w-2.5 bg-amber-200'
+                          idx < failedAttempts ? 'w-5 bg-red-500' : 'w-2.5 bg-amber-200'
                         }`}
                       />
                     ))}
@@ -410,11 +410,11 @@ export default function App() {
                     className={`w-full border rounded-2xl py-3 px-4 text-center text-xl tracking-[0.35em] font-mono text-slate-900 focus:outline-none transition placeholder:tracking-normal placeholder:text-sm placeholder:font-sans ${
                       lockoutRemaining > 0
                         ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed placeholder:text-slate-400'
-                        : 'bg-slate-50 border-slate-300 focus:ring-2 focus:ring-emerald-500 placeholder:text-slate-400'
+                        : 'bg-slate-50 border-slate-300 focus:ring-2 focus:ring-pink-500 placeholder:text-slate-400'
                     }`}
                   />
                   {pinError && (
-                    <p className="text-rose-600 text-xs font-bold mt-2 flex items-center justify-center gap-1.5">
+                    <p className="text-red-600 text-xs font-bold mt-2 flex items-center justify-center gap-1.5">
                       <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                       <span>{pinError}</span>
                     </p>
@@ -461,7 +461,7 @@ export default function App() {
                     className={`flex-1 py-2.5 rounded-2xl text-xs font-bold shadow-xs transition ${
                       lockoutRemaining > 0 || !pinInput.trim()
                         ? 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300'
-                        : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white active:scale-95 cursor-pointer'
+                        : 'bg-gradient-to-r from-pink-600 to-pink-600 hover:from-pink-700 hover:to-pink-700 text-white active:scale-95 cursor-pointer'
                     }`}
                   >
                     {lockoutRemaining > 0
