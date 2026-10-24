@@ -302,14 +302,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             exit={{ opacity: 0, y: -16 }}
             className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-2xl shadow-lg border text-xs font-bold flex items-center gap-2 ${
               toastMessage.type === 'error'
-                ? 'bg-red-50 border-red-200 text-red-800'
-                : 'bg-pink-50 border-pink-200 text-pink-900'
+                ? 'bg-rose-50 border-rose-200 text-rose-800'
+                : 'bg-emerald-50 border-emerald-200 text-emerald-900'
             }`}
           >
             {toastMessage.type === 'error' ? (
-              <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
             ) : (
-              <Check className="w-4 h-4 text-pink-600 shrink-0" />
+              <Check className="w-4 h-4 text-emerald-600 shrink-0" />
             )}
             <span>{toastMessage.text}</span>
           </motion.div>
@@ -337,7 +337,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             className="p-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-600 rounded-2xl text-xs transition cursor-pointer shadow-xs"
             title="Muat ulang data presensi"
           >
-            <RefreshCw className="w-4 h-4 text-pink-600" />
+            <RefreshCw className="w-4 h-4 text-emerald-600" />
           </motion.button>
           <motion.button
             type="button"
@@ -345,7 +345,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             whileHover={{ scale: 1.03 }}
             whileTap={{ scale: 0.97 }}
             onClick={handleExportExcel}
-            className="px-4 py-2 bg-gradient-to-r from-pink-600 to-pink-600 hover:from-pink-700 hover:to-pink-700 text-white rounded-2xl text-xs font-bold transition shadow-xs cursor-pointer"
+            className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-2xl text-xs font-bold transition shadow-xs cursor-pointer"
           >
             <span>{exporting ? 'Mengambil data...' : 'Excel (.xlsx)'}</span>
           </motion.button>
@@ -386,7 +386,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               onClick={() => setAdminViewTab('records')}
               className={`px-4 py-2.5 rounded-2xl text-xs font-bold transition cursor-pointer ${
                 adminViewTab === 'records'
-                  ? 'bg-pink-600 text-white shadow-xs'
+                  ? 'bg-emerald-600 text-white shadow-xs'
                   : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
               }`}
             >
@@ -397,7 +397,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               onClick={() => setAdminViewTab('unmarked')}
               className={`px-4 py-2.5 rounded-2xl text-xs font-bold transition cursor-pointer ${
                 adminViewTab === 'unmarked'
-                  ? 'bg-pink-600 text-white shadow-xs'
+                  ? 'bg-emerald-600 text-white shadow-xs'
                   : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
               }`}
             >
@@ -408,9 +408,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <button
             type="button"
             onClick={() => setDeleteAllConfirmOpen(true)}
-            className="px-4 py-2.5 bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 font-bold rounded-2xl text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-xs shrink-0"
+            className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold rounded-2xl text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-xs shrink-0"
           >
-            <Trash2 className="w-4 h-4 text-red-600" />
+            <Trash2 className="w-4 h-4 text-rose-600" />
             <span>Hapus Semua Data Presensi</span>
           </button>
         </div>
@@ -429,7 +429,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <select
                     value={rekapClass}
                     onChange={(e) => setRekapClass(e.target.value)}
-                    className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-pink-500 focus:outline-none cursor-pointer"
+                    className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer"
                   >
                     {CLASSES.map((cls) => (
                       <option key={`rekap-cls-${cls}`} value={cls}>{cls}</option>
@@ -442,7 +442,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <select
                     value={rekapPrayer}
                     onChange={(e) => setRekapPrayer(e.target.value)}
-                    className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-pink-500 focus:outline-none cursor-pointer"
+                    className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer"
                   >
                     <option value="Dhuha">Dhuha</option>
                     <option value="Dzuhur">Dzuhur</option>
@@ -505,17 +505,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Siswa Terdaftar</span>
                       <div className="text-2xl font-black text-slate-900 mt-1">{classStudentsList.length} Siswa</div>
                     </div>
-                    <div className="bg-pink-50 border border-pink-200 rounded-2xl p-4">
-                      <span className="text-xs font-bold text-pink-700 uppercase tracking-wider">Sudah Melakukan Absen</span>
-                      <div className="text-2xl font-black text-pink-800 mt-1">{checkedNamesSet.size} Siswa</div>
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4">
+                      <span className="text-xs font-bold text-emerald-700 uppercase tracking-wider">Sudah Melakukan Absen</span>
+                      <div className="text-2xl font-black text-emerald-800 mt-1">{checkedNamesSet.size} Siswa</div>
                     </div>
                     <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
                       <span className="text-xs font-bold text-amber-700 uppercase tracking-wider">Berhalangan (Haid/Sakit/Izin)</span>
                       <div className="text-2xl font-black text-amber-800 mt-1">{excusedList.length} Siswa</div>
                     </div>
-                    <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
-                      <span className="text-xs font-bold text-red-700 uppercase tracking-wider">Belum Absen Hari Ini</span>
-                      <div className="text-2xl font-black text-red-800 mt-1">{uncheckedList.length} Siswa</div>
+                    <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4">
+                      <span className="text-xs font-bold text-rose-700 uppercase tracking-wider">Belum Absen Hari Ini</span>
+                      <div className="text-2xl font-black text-rose-800 mt-1">{uncheckedList.length} Siswa</div>
                     </div>
                   </div>
 
@@ -549,25 +549,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                   {/* Daftar Siswa Belum Absen */}
                   <div>
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-red-700 mb-3 flex items-center gap-2">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-rose-700 mb-3 flex items-center gap-2">
                       <span>Daftar Siswa Kelas {rekapClass} yang BELUM Absen ({rekapPrayer})</span>
                     </h4>
 
                     {uncheckedList.length === 0 ? (
-                      <div className="p-6 rounded-2xl bg-pink-50 border border-pink-200 text-center text-pink-800 text-xs font-bold">
+                      <div className="p-6 rounded-2xl bg-emerald-50 border border-emerald-200 text-center text-emerald-800 text-xs font-bold">
                         Seluruh siswa di kelas {rekapClass} sudah melakukan presensi {rekapPrayer} hari ini.
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                         {uncheckedList.map((stu, index) => (
-                          <div key={`${stu.class}-${stu.id}-${index}`} className="p-3.5 rounded-2xl bg-red-50/70 border border-red-200 flex items-center justify-between gap-2 shadow-xs hover:border-red-300 transition">
+                          <div key={`${stu.class}-${stu.id}-${index}`} className="p-3.5 rounded-2xl bg-rose-50/70 border border-rose-200 flex items-center justify-between gap-2 shadow-xs hover:border-rose-300 transition">
                             <div className="min-w-0">
                               <div className="text-xs font-bold text-slate-900 truncate">{stu.name}</div>
                               <div className="text-[11px] text-slate-500 font-medium">
                                 {stu.gender === 'L' ? 'Laki-laki' : 'Perempuan'}
                               </div>
                             </div>
-                            <span className="px-2.5 py-1 rounded-xl bg-red-200/70 text-red-800 text-[10px] font-bold shrink-0">
+                            <span className="px-2.5 py-1 rounded-xl bg-rose-200/70 text-rose-800 text-[10px] font-bold shrink-0">
                               Belum Absen
                             </span>
                           </div>
@@ -595,13 +595,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </motion.div>
 
           <motion.div
-            className="bg-white border border-pink-200/80 p-3.5 rounded-3xl shadow-xs"
+            className="bg-white border border-emerald-200/80 p-3.5 rounded-3xl shadow-xs"
             whileHover={{ y: -3, scale: 1.02 }}
             transition={{ type: 'spring', stiffness: 350, damping: 20 }}
           >
-            <span className="text-xs font-bold text-pink-700 block">Hadir Sah</span>
-            <div className="text-2xl font-black text-pink-600 mt-1">{stats.hadir}</div>
-            <span className="text-[11px] text-pink-600">Presensi Sah</span>
+            <span className="text-xs font-bold text-emerald-700 block">Hadir Sah</span>
+            <div className="text-2xl font-black text-emerald-600 mt-1">{stats.hadir}</div>
+            <span className="text-[11px] text-emerald-600">Presensi Sah</span>
           </motion.div>
 
           <motion.div
@@ -676,14 +676,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <button
                 type="button"
                 onClick={() => applyDatePreset(180)}
-                className="px-2.5 py-1 rounded-xl bg-pink-50 hover:bg-pink-100 border border-pink-200 text-pink-700 text-[11px] font-semibold transition cursor-pointer"
+                className="px-2.5 py-1 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 text-[11px] font-semibold transition cursor-pointer"
               >
                 1 Semester (6 Bulan)
               </button>
               <button
                 type="button"
                 onClick={resetFilters}
-                className="px-2.5 py-1 rounded-xl text-red-600 hover:underline text-[11px] font-semibold ml-2 cursor-pointer"
+                className="px-2.5 py-1 rounded-xl text-rose-600 hover:underline text-[11px] font-semibold ml-2 cursor-pointer"
               >
                 Reset Filter
               </button>
@@ -692,14 +692,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3 text-xs">
             {/* Filter Bulan Tertentu */}
-            <div className="bg-pink-50/60 p-2 rounded-2xl border border-pink-200">
-              <label className="block text-pink-900 font-bold mb-1 flex items-center justify-between">
+            <div className="bg-emerald-50/60 p-2 rounded-2xl border border-emerald-200">
+              <label className="block text-emerald-900 font-bold mb-1 flex items-center justify-between">
                 <span>Pilih Bulan:</span>
                 {selectedMonthYear && (
                   <button
                     type="button"
                     onClick={() => setSelectedMonthYear('')}
-                    className="text-[10px] text-pink-700 hover:underline cursor-pointer"
+                    className="text-[10px] text-emerald-700 hover:underline cursor-pointer"
                   >
                     Hapus
                   </button>
@@ -715,7 +715,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     setDateRangeEnd('');
                   }
                 }}
-                className="w-full bg-white border border-pink-300 rounded-xl px-2.5 py-1.5 text-slate-800 focus:ring-2 focus:ring-pink-500 focus:outline-none font-medium cursor-pointer"
+                className="w-full bg-white border border-emerald-300 rounded-xl px-2.5 py-1.5 text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none font-medium cursor-pointer"
                 title="Pilih bulan rekapitulasi (misal Mei 2026)"
               />
             </div>
@@ -730,7 +730,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   setDateRangeStart(e.target.value);
                   if (e.target.value) setSelectedMonthYear('');
                 }}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:ring-2 focus:ring-pink-500 focus:outline-none"
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
               />
             </div>
             {/* Tanggal Sampai */}
@@ -743,7 +743,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   setDateRangeEnd(e.target.value);
                   if (e.target.value) setSelectedMonthYear('');
                 }}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:ring-2 focus:ring-pink-500 focus:outline-none"
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
               />
             </div>
             {/* Filter Kelas */}
@@ -752,7 +752,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <select
                 value={selectedClass}
                 onChange={(e) => setSelectedClass(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:ring-2 focus:ring-pink-500 focus:outline-none cursor-pointer"
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer"
               >
                 <option value="">Semua Kelas</option>
                 {CLASSES.map((c) => (
@@ -768,7 +768,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <select
                 value={selectedPrayer}
                 onChange={(e) => setSelectedPrayer(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:ring-2 focus:ring-pink-500 focus:outline-none cursor-pointer"
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer"
               >
                 <option value="">Semua Sholat</option>
                 <option value="Dhuha">Dhuha</option>
@@ -782,7 +782,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <select
                 value={selectedStatus}
                 onChange={(e) => setSelectedStatus(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:ring-2 focus:ring-pink-500 focus:outline-none cursor-pointer"
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer"
               >
                 <option value="">Semua Status</option>
                 <option value="Hadir">Hadir</option>
@@ -801,7 +801,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   placeholder="Ketik nama..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-8 pr-3 py-2 text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-pink-500 focus:outline-none"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-8 pr-3 py-2 text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                 />
               </div>
             </div>
@@ -812,12 +812,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-2 text-xs">
               <span className="text-slate-500 font-medium">Filter Aktif:</span>
               {selectedMonthYear && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-pink-100/80 text-pink-900 font-semibold">
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-100/80 text-emerald-900 font-semibold">
                   <span>Bulan: {selectedMonthYear === '2026-05' ? 'Mei 2026' : selectedMonthYear}</span>
                   <button
                     type="button"
                     onClick={() => setSelectedMonthYear('')}
-                    className="hover:text-pink-700 cursor-pointer ml-0.5"
+                    className="hover:text-emerald-700 cursor-pointer ml-0.5"
                   >
                     ×
                   </button>
@@ -836,12 +836,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </span>
               )}
               {selectedPrayer && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-pink-100/80 text-pink-900 font-semibold">
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-100/80 text-teal-900 font-semibold">
                   <span>Sholat: {selectedPrayer}</span>
                   <button
                     type="button"
                     onClick={() => setSelectedPrayer('')}
-                    className="hover:text-pink-700 cursor-pointer ml-0.5"
+                    className="hover:text-teal-700 cursor-pointer ml-0.5"
                   >
                     ×
                   </button>
@@ -896,7 +896,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               let timeStr = rec.recorded_time || (d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' }) + ' WIB');
               if (!timeStr.endsWith('WIB')) timeStr += ' WIB';
 
-              let badgeColor = 'bg-pink-50 text-pink-700 border-pink-200';
+              let badgeColor = 'bg-emerald-50 text-emerald-700 border-emerald-200';
               const badgeLabel = rec.status;
               if (rec.status === "Halangan Syar'i") {
                 badgeColor = 'bg-purple-50 text-purple-700 border-purple-200';
@@ -925,7 +925,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
 
                     <div className="flex flex-col items-end gap-1 shrink-0">
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide bg-pink-100/70 text-pink-800 border border-pink-200">
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide bg-emerald-100/70 text-emerald-800 border border-emerald-200">
                         {rec.prayer_type}
                       </span>
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${badgeColor}`}>
@@ -959,9 +959,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <button
                       type="button"
                       onClick={() => promptDeleteRecord(rec.id, rec.name)}
-                      className="px-3 py-1.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                      className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
                     >
-                      <Trash2 className="w-3.5 h-3.5 text-red-600" />
+                      <Trash2 className="w-3.5 h-3.5 text-rose-600" />
                       <span>Hapus</span>
                     </button>
                   </div>
@@ -999,7 +999,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     const dateStr = d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Jakarta' });
                     const timeStr = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' });
 
-                    let badgeColor = 'bg-pink-50 text-pink-700 border-pink-200';
+                    let badgeColor = 'bg-emerald-50 text-emerald-700 border-emerald-200';
                     const badgeLabel = rec.status;
                     if (rec.status === "Halangan Syar'i") {
                       badgeColor = 'bg-purple-50 text-purple-700 border-purple-200';
@@ -1025,7 +1025,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                         {/* Sholat */}
                         <td className="py-4 px-4 whitespace-nowrap">
-                          <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-pink-50 text-pink-800 border border-pink-200">
+                          <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
                             {rec.prayer_type}
                           </span>
                         </td>
@@ -1045,15 +1045,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <button
                               type="button"
                               onClick={() => setViewPhotoRecord(rec)}
-                              className="group flex items-center gap-2.5 text-left hover:opacity-90 cursor-pointer bg-white p-1.5 rounded-xl border border-slate-200 shadow-2xs hover:border-pink-300 transition"
+                              className="group flex items-center gap-2.5 text-left hover:opacity-90 cursor-pointer bg-white p-1.5 rounded-xl border border-slate-200 shadow-2xs hover:border-emerald-300 transition"
                             >
                               <img
                                 src={rec.snapshot_photo}
                                 alt="Bukti"
-                                className="w-10 h-10 rounded-lg object-cover border border-slate-200 bg-slate-100 group-hover:ring-2 group-hover:ring-pink-500 transition shadow-2xs shrink-0"
+                                className="w-10 h-10 rounded-lg object-cover border border-slate-200 bg-slate-100 group-hover:ring-2 group-hover:ring-emerald-500 transition shadow-2xs shrink-0"
                               />
                               <div className="min-w-0">
-                                <div className="text-[11px] text-pink-700 font-bold flex items-center gap-1 group-hover:underline">
+                                <div className="text-[11px] text-emerald-700 font-bold flex items-center gap-1 group-hover:underline">
                                   <Eye className="w-3 h-3" /> Lihat Foto
                                 </div>
                               </div>
@@ -1098,7 +1098,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               whileHover={{ scale: 1.1 }}
                               whileTap={{ scale: 0.9 }}
                               onClick={() => promptDeleteRecord(rec.id, rec.name)}
-                              className="p-2 rounded-xl bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 transition cursor-pointer shadow-2xs"
+                              className="p-2 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-600 transition cursor-pointer shadow-2xs"
                               title="Hapus Catatan Presensi"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -1123,7 +1123,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 {(currentPage - 1) * pageSize + 1} - {Math.min(currentPage * pageSize, filteredRecords.length)}
               </span>
               <span>dari total</span>
-              <span className="font-bold text-pink-700">{filteredRecords.length}</span>
+              <span className="font-bold text-emerald-700">{filteredRecords.length}</span>
               <span>data presensi</span>
               <span className="text-[11px] text-slate-400 hidden md:inline-block">
                 (Unduh Excel/PDF otomatis mencakup seluruh {filteredRecords.length} data)
@@ -1234,7 +1234,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Kelas & Sholat:</span>
-                <span className="font-bold text-pink-700">
+                <span className="font-bold text-emerald-700">
                   {viewPhotoRecord.class} | {viewPhotoRecord.prayer_type}
                 </span>
               </div>
@@ -1263,7 +1263,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <select
                   value={newStatus}
                   onChange={(e) => setNewStatus(e.target.value as AttendanceStatus)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:ring-2 focus:ring-pink-500 focus:outline-none cursor-pointer"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer"
                 >
                   <option value="Hadir">Hadir</option>
                   <option value="Halangan Syar'i">Halangan Syar'i</option>
@@ -1280,7 +1280,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   value={editNotes}
                   onChange={(e) => setEditNotes(e.target.value)}
                   placeholder="Alasan koreksi status..."
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-pink-500 focus:outline-none"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                 />
               </div>
             </div>
@@ -1295,7 +1295,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <button
                 type="button"
                 onClick={handleSaveStatusEdit}
-                className="px-4 py-2 rounded-xl bg-pink-600 hover:bg-pink-700 text-white text-xs font-bold shadow-xs cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs cursor-pointer"
               >
                 Simpan Perubahan
               </button>
@@ -1316,7 +1316,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               exit={{ scale: 0.92, opacity: 0 }}
               className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-slate-100 flex flex-col items-center text-center space-y-4"
             >
-              <div className="w-14 h-14 rounded-2xl bg-red-50 border border-red-100 flex items-center justify-center text-red-600 shadow-inner">
+              <div className="w-14 h-14 rounded-2xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-600 shadow-inner">
                 <Trash2 className="w-7 h-7" />
               </div>
 
@@ -1342,7 +1342,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   type="button"
                   disabled={isDeleting}
                   onClick={confirmDeleteRecord}
-                  className="flex-1 py-2.5 px-4 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold shadow-xs transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
+                  className="flex-1 py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
                 >
                   {isDeleting ? (
                     <>
@@ -1372,7 +1372,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
               className="bg-white rounded-3xl max-w-md p-6 shadow-xl border border-slate-200 space-y-4 w-full"
             >
-              <div className="w-12 h-12 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center mx-auto">
+              <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
                 <AlertCircle className="w-6 h-6" />
               </div>
               <div className="text-center">
@@ -1384,7 +1384,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               <div>
                 <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                  Ketik <span className="text-red-600">HAPUS</span> untuk melanjutkan:
+                  Ketik <span className="text-rose-600">HAPUS</span> untuk melanjutkan:
                 </label>
                 <input
                   type="text"
@@ -1393,7 +1393,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   onChange={(e) => setDeleteAllConfirmText(e.target.value)}
                   placeholder="HAPUS"
                   autoCapitalize="characters"
-                  className="w-full bg-slate-50 border border-slate-300 rounded-2xl px-3.5 py-2.5 text-sm font-bold text-slate-900 focus:ring-2 focus:ring-red-500 focus:outline-none"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-2xl px-3.5 py-2.5 text-sm font-bold text-slate-900 focus:ring-2 focus:ring-rose-500 focus:outline-none"
                 />
                 {isDeletingAll && (
                   <p className="text-[11px] text-slate-500 mt-1.5 font-medium">
@@ -1418,7 +1418,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   type="button"
                   disabled={isDeletingAll || deleteAllConfirmText.trim().toUpperCase() !== 'HAPUS'}
                   onClick={handleConfirmDeleteAll}
-                  className="flex-1 py-2.5 rounded-2xl bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold shadow-xs transition cursor-pointer flex items-center justify-center gap-2"
+                  className="flex-1 py-2.5 rounded-2xl bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold shadow-xs transition cursor-pointer flex items-center justify-center gap-2"
                 >
                   {isDeletingAll ? 'Menghapus...' : 'Ya, Hapus Semua'}
                 </button>
