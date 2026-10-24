@@ -62,7 +62,7 @@ export const BeRealPreviewModal: React.FC<BeRealPreviewModalProps> = ({
         <div className="flex items-center justify-between border-b border-slate-200 pb-3">
           <div className="flex items-center gap-2.5">
             <motion.div
-              className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white shadow-xs"
+              className="w-9 h-9 rounded-xl bg-gradient-to-tr from-pink-600 to-pink-500 flex items-center justify-center text-white shadow-xs"
               animate={{ rotate: [-3, 3, -3] }}
               transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
             >
@@ -70,7 +70,7 @@ export const BeRealPreviewModal: React.FC<BeRealPreviewModalProps> = ({
             </motion.div>
             <div>
               <h3 className="font-extrabold text-sm text-slate-900">Hasil Foto 2 Sudut</h3>
-              <p className="text-xs text-emerald-700 font-semibold">Wajah Siswa dan Suasana Sholat</p>
+              <p className="text-xs text-pink-700 font-semibold">Wajah Siswa dan Suasana Sholat</p>
             </div>
           </div>
           <motion.button
@@ -100,7 +100,7 @@ export const BeRealPreviewModal: React.FC<BeRealPreviewModalProps> = ({
               className="absolute bottom-14 right-3 px-3 py-1.5 rounded-full bg-slate-900/90 hover:bg-slate-900 border border-slate-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-md transition cursor-pointer"
               title="Tukar foto utama dan foto kecil"
             >
-              <ArrowLeftRight className="w-3.5 h-3.5 text-emerald-400" />
+              <ArrowLeftRight className="w-3.5 h-3.5 text-pink-400" />
               <span>Tukar Sudut</span>
             </motion.button>
           )}
@@ -127,7 +127,7 @@ export const BeRealPreviewModal: React.FC<BeRealPreviewModalProps> = ({
               whileTap={{ scale: 0.96 }}
               onClick={handleConfirm}
               disabled={isSubmitting}
-              className="py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition disabled:opacity-50 cursor-pointer"
+              className="py-2.5 px-4 rounded-xl bg-gradient-to-r from-pink-600 to-pink-600 hover:from-pink-700 hover:to-pink-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition disabled:opacity-50 cursor-pointer"
             >
               {isSubmitting ? (
                 <div className="flex items-center gap-1.5">
